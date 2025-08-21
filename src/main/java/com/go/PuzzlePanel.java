@@ -51,7 +51,11 @@ public class PuzzlePanel extends JPanel implements KeyListener {
             int boxHeight = 180;
             int boxX = (getWidth() - boxWidth) / 2;
             int boxY = (getHeight() - boxHeight) / 2;
-            g2.fillRoundRect(boxX, boxY, boxWidth, boxHeight, 20, 20);
+            if (puzzleSolved == true) {
+                g2.fillRoundRect(boxX, boxY, boxWidth, boxHeight, 20, 20);
+            } else{
+                g2.fillRoundRect(boxX, boxY, boxWidth, boxHeight + 30, 20, 20);
+            }
 
             g2.setColor(Color.BLACK);
             g2.setFont(new Font("SansSerif", Font.BOLD, 30));
@@ -64,6 +68,8 @@ public class PuzzlePanel extends JPanel implements KeyListener {
             g2.drawString("[N] - New Puzzle", boxX + 30, boxY + 90);
             g2.drawString("[R] - Retry", boxX + 30, boxY + 120);
             g2.drawString("[M] - Main Menu", boxX + 30, boxY + 150);
+            if (!puzzleSolved)
+                g2.drawString("[C] - Continue", boxX + 30, boxY + 180);
     }
 
     public void setOnRetry(Runnable r) {
@@ -142,6 +148,13 @@ public class PuzzlePanel extends JPanel implements KeyListener {
         switch (Character.toUpperCase(e.getKeyChar())) { 
             case 'R':
                 onRetry.run();
+                break;
+            case 'C':
+                if (!puzzleSolved){
+                    showMenu = false;
+                    repaint();
+                }
+                repaint();
                 break;
             case 'N':
                 onNewPuzzle.run();
