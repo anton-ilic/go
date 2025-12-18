@@ -115,7 +115,10 @@ public class PuzzlePanel extends JPanel implements KeyListener {
 
         int cellWidth = getWidth() / Board.BOARD_SIZE;
         int cellHeight = getHeight() / Board.BOARD_SIZE;
-        int stoneRadius = Math.min(cellWidth, cellHeight) / 2 - 2;
+        // Stone size for 11x11 board - larger for better visibility
+        int stoneRadius = (int) (Math.min(cellWidth, cellHeight) * 0.48);
+        // Ensure minimum stone size for visibility
+        if (stoneRadius < 6) stoneRadius = 6;
 
         // Draw board background
         g2d.setColor(new Color(220, 179, 92)); // Traditional Go board color
@@ -135,7 +138,7 @@ public class PuzzlePanel extends JPanel implements KeyListener {
         // Draw star points (hoshi)
         g2d.setColor(Color.BLACK);
         int starRadius = 3;
-        int[] starPoints = {2, 6}; // 9x9 board star points
+        int[] starPoints = {3, 5, 7}; // 11x11 board star points
         for (int x : starPoints) {
             for (int y : starPoints) {
                 int centerX = x * cellWidth;

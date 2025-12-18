@@ -29,7 +29,7 @@ public class Board {
     public static final int WHITE = 1;
     public static final int BLACK = 2;
     public static final int EMPTY = 0;
-    public static final int BOARD_SIZE = 9;
+    public static final int BOARD_SIZE = 11;
     private boolean moved;
     private boolean toggle = true; //toggle value, true: White, false: Black
 
