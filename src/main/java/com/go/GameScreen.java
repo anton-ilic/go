@@ -6,8 +6,8 @@ import java.awt.BorderLayout;
 public class GameScreen extends JFrame {
     public GameScreen() {
         setTitle("Go Game");
-        setSize(900, 900);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
+        WindowManager.configureWindow(this);
         setLayout(new BorderLayout());
 
         Board board = new Board();

@@ -8,8 +8,8 @@ import java.util.Random;
 public class PuzzleScreen extends JFrame {
     public PuzzleScreen() {
         setTitle("Solve Puzzle");
-        setSize(800, 600);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
+        WindowManager.configureWindow(this);
         setLayout(new BorderLayout());
 
         // Load puzzles from DB
@@ -33,16 +33,19 @@ public class PuzzleScreen extends JFrame {
         puzzlePanel.requestFocusInWindow();
 
         puzzlePanel.setOnRetry(() -> {
+            WindowManager.saveLocation(this);
             dispose();
             new PuzzleScreen();
         });
 
         puzzlePanel.setOnNewPuzzle(() -> {
+            WindowManager.saveLocation(this);
             dispose();
             new PuzzleScreen();
         });
 
         puzzlePanel.setOnBackToMenu(() -> {
+            WindowManager.saveLocation(this);
             dispose();
             new StartScreen();
         });

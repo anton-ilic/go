@@ -13,9 +13,8 @@ public class StartScreen extends JFrame implements KeyListener {
     
     public StartScreen() {
         setTitle("Go Puzzles");
-        setSize(1000, 800);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setLocationRelativeTo(null);
+        WindowManager.configureWindow(this);
         addKeyListener(this);
         setFocusable(true);
         setFocusTraversalKeysEnabled(false);
@@ -174,10 +173,12 @@ public class StartScreen extends JFrame implements KeyListener {
         char key = Character.toLowerCase(e.getKeyChar());
         switch (key) {
             case 'g':
+                WindowManager.saveLocation(this);
                 dispose();
                 new GameScreen();
                 break;
             case 'p':
+                WindowManager.saveLocation(this);
                 dispose();
                 new PuzzleScreen();
                 break;
