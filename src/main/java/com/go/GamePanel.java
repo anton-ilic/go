@@ -97,6 +97,67 @@ public class GamePanel extends JPanel {
     }
 
 
+    private void fillWoodTextureBackground(Graphics2D g2d) {
+        if (boardImage == null) return;
+        
+        int imgWidth = boardImage.getWidth();
+        int imgHeight = boardImage.getHeight();
+        int panelWidth = getWidth();
+        int panelHeight = getHeight();
+        
+        // Sample wood texture from the edges of the board image
+        int sampleWidth = Math.min(50, imgWidth / 4); // Sample width from edges
+        int sampleHeight = Math.min(50, imgHeight / 4); // Sample height from edges
+        
+        // Fill left side - tile from left edge of image
+        if (boardX > 0) {
+            for (int x = 0; x < boardX; x += sampleWidth) {
+                int tileW = Math.min(sampleWidth, boardX - x);
+                g2d.drawImage(boardImage, x, 0, x + tileW, panelHeight,
+                            0, 0, tileW, imgHeight, null);
+            }
+        }
+        
+        // Fill right side - tile from right edge of image
+        int rightStart = boardX + boardWidth;
+        if (rightStart < panelWidth) {
+            for (int x = rightStart; x < panelWidth; x += sampleWidth) {
+                int tileW = Math.min(sampleWidth, panelWidth - x);
+                int srcX = imgWidth - tileW;
+                g2d.drawImage(boardImage, x, 0, x + tileW, panelHeight,
+                            srcX, 0, imgWidth, imgHeight, null);
+            }
+        }
+        
+        // Fill top area - tile from top edge of image
+        if (boardY > 0) {
+            for (int y = 0; y < boardY; y += sampleHeight) {
+                int tileH = Math.min(sampleHeight, boardY - y);
+                // Fill across the entire width
+                for (int x = 0; x < panelWidth; x += sampleWidth) {
+                    int tileW = Math.min(sampleWidth, panelWidth - x);
+                    g2d.drawImage(boardImage, x, y, x + tileW, y + tileH,
+                                0, 0, tileW, tileH, null);
+                }
+            }
+        }
+        
+        // Fill bottom area - tile from bottom edge of image
+        int bottomStart = boardY + boardHeight;
+        if (bottomStart < panelHeight) {
+            for (int y = bottomStart; y < panelHeight; y += sampleHeight) {
+                int tileH = Math.min(sampleHeight, panelHeight - y);
+                // Fill across the entire width
+                for (int x = 0; x < panelWidth; x += sampleWidth) {
+                    int tileW = Math.min(sampleWidth, panelWidth - x);
+                    int srcY = imgHeight - tileH;
+                    g2d.drawImage(boardImage, x, y, x + tileW, y + tileH,
+                                0, srcY, tileW, imgHeight, null);
+                }
+            }
+        }
+    }
+
     private void calculateGridPositions() {
         if (boardImage == null) {
             cellSize = 0;
@@ -167,6 +228,9 @@ public class GamePanel extends JPanel {
         if (boardImage != null) {
             // Calculate grid positions (includes board dimensions)
             calculateGridPositions();
+            
+            // Fill background with wood texture from board image edges
+            fillWoodTextureBackground(g2d);
             
             // Draw the board image
             g2d.drawImage(boardImage, boardX, boardY, boardWidth, boardHeight, null);
