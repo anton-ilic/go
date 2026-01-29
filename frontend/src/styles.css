@@ -20,6 +20,25 @@ body {
   color: #fff;
 }
 
+.app-nav {
+  margin-top: 0.5rem;
+}
+
+.app-nav button {
+  margin-right: 0.5rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+
+.app-nav button.active {
+  background: #fff;
+  color: #2c3e50;
+}
+
 .app-main {
   display: flex;
   flex: 1;
@@ -39,6 +58,42 @@ body {
   align-items: center;
   justify-content: flex-start;
   gap: 1rem;
+}
+
+.board-section.full-width {
+  align-items: stretch;
+}
+
+.online-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.online-info {
+  text-align: left;
+}
+
+.online-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 320px;
+}
+
+.online-form input {
+  width: 100%;
+  padding: 0.3rem 0.4rem;
+}
+
+.online-actions button {
+  margin-right: 0.5rem;
+}
+
+.share-url {
+  font-size: 0.8rem;
+  word-break: break-all;
 }
 
 .puzzle-list {

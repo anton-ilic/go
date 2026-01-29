@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Board } from './components/Board';
 import { PuzzleList } from './components/PuzzleList';
+import { OnlineGo } from './OnlineGo';
 
 export type Stone = { x: number; y: number; color: 'WHITE' | 'BLACK' };
 
@@ -41,6 +42,12 @@ export const App: React.FC = () => {
   const [loadingPuzzles, setLoadingPuzzles] = useState(false);
   const [currentGame, setCurrentGame] = useState<CreateGameResponse | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [mode, setMode] = useState<'puzzles' | 'online'>('puzzles');
+
+  const initialOnlineGameId = useMemo(() => {
+    const url = new URL(window.location.href);
+    return url.searchParams.get('gameId');
+  }, []);
 
   useEffect(() => {
     const loadPuzzles = async () => {
@@ -116,27 +123,52 @@ export const App: React.FC = () => {
     <div className="app">
       <header className="app-header">
         <h1>Go Puzzles</h1>
+        <nav className="app-nav">
+          <button
+            type="button"
+            className={mode === 'puzzles' ? 'active' : ''}
+            onClick={() => setMode('puzzles')}
+          >
+            Puzzles
+          </button>
+          <button
+            type="button"
+            className={mode === 'online' ? 'active' : ''}
+            onClick={() => setMode('online')}
+          >
+            Play Go Online
+          </button>
+        </nav>
       </header>
       <main className="app-main">
-        <section className="sidebar">
-          <h2>Puzzles</h2>
-          <PuzzleList
-            puzzles={puzzles}
-            loading={loadingPuzzles}
-            onSelectPuzzle={handleSelectPuzzle}
-          />
-        </section>
-        <section className="board-section">
-          {boardState ? (
-            <Board board={boardState} onPlayMove={handlePlayMove} />
-          ) : (
-            <p>Select a puzzle to begin.</p>
-          )}
-          {currentGame?.state.solved && (
-            <p className="status solved">Puzzle solved! 🎉</p>
-          )}
-          {statusMessage && <p className="status">{statusMessage}</p>}
-        </section>
+        {mode === 'puzzles' && (
+          <>
+            <section className="sidebar">
+              <h2>Puzzles</h2>
+              <PuzzleList
+                puzzles={puzzles}
+                loading={loadingPuzzles}
+                onSelectPuzzle={handleSelectPuzzle}
+              />
+            </section>
+            <section className="board-section">
+              {boardState ? (
+                <Board board={boardState} onPlayMove={handlePlayMove} />
+              ) : (
+                <p>Select a puzzle to begin.</p>
+              )}
+              {currentGame?.state.solved && (
+                <p className="status solved">Puzzle solved! 🎉</p>
+              )}
+              {statusMessage && <p className="status">{statusMessage}</p>}
+            </section>
+          </>
+        )}
+        {mode === 'online' && (
+          <section className="board-section full-width">
+            <OnlineGo initialGameId={initialOnlineGameId} />
+          </section>
+        )}
       </main>
     </div>
   );
