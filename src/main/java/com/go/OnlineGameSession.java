@@ -20,6 +20,7 @@ public class OnlineGameSession {
     }
 
     private final UUID gameId;
+    private final String roomCode;
     private final Board board;
 
     private UUID blackPlayerId;
@@ -31,14 +32,19 @@ public class OnlineGameSession {
     private GameStatus status;
     private final Instant createdAt;
 
-    public OnlineGameSession(Board board, String creatorName) {
+    public OnlineGameSession(Board board, String creatorName, String roomCode) {
         this.gameId = UUID.randomUUID();
+        this.roomCode = roomCode;
         this.board = board;
         this.blackPlayerId = UUID.randomUUID();
         this.blackPlayerName = creatorName;
         this.currentTurn = Turn.BLACK;
         this.status = GameStatus.WAITING_FOR_OPPONENT;
         this.createdAt = Instant.now();
+    }
+
+    public String getRoomCode() {
+        return roomCode;
     }
 
     public UUID getGameId() {

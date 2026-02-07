@@ -4,6 +4,7 @@ import com.go.OnlineGameSession.GameStatus;
 import com.go.OnlineGameSession.Turn;
 import org.springframework.stereotype.Service;
 
+import java.security.SecureRandom;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -15,12 +16,38 @@ import java.util.concurrent.ConcurrentHashMap;
 public class OnlineGameService {
 
     private final Map<UUID, OnlineGameSession> games = new ConcurrentHashMap<>();
+    private final Map<String, OnlineGameSession> gamesByRoomCode = new ConcurrentHashMap<>();
+    private static final String ROOM_CODE_CHARS = "ABCDEFGHJKLMNOPQRSTUVWXYZ23456789"; // Exclude I, O, 0, 1 for clarity
+    private static final int ROOM_CODE_LENGTH = 6;
+    private final SecureRandom random = new SecureRandom();
+
+    /**
+     * Generates a unique 6-character room code.
+     */
+    private String generateRoomCode() {
+        StringBuilder code = new StringBuilder(ROOM_CODE_LENGTH);
+        for (int i = 0; i < ROOM_CODE_LENGTH; i++) {
+            code.append(ROOM_CODE_CHARS.charAt(random.nextInt(ROOM_CODE_CHARS.length())));
+        }
+        String roomCode = code.toString();
+        // Ensure uniqueness (very unlikely collision, but check anyway)
+        while (gamesByRoomCode.containsKey(roomCode)) {
+            code = new StringBuilder(ROOM_CODE_LENGTH);
+            for (int i = 0; i < ROOM_CODE_LENGTH; i++) {
+                code.append(ROOM_CODE_CHARS.charAt(random.nextInt(ROOM_CODE_CHARS.length())));
+            }
+            roomCode = code.toString();
+        }
+        return roomCode;
+    }
 
     public OnlineGameSession createGame(String creatorName) {
         Board board = new Board();
         board.restart();
-        OnlineGameSession session = new OnlineGameSession(board, creatorName);
+        String roomCode = generateRoomCode();
+        OnlineGameSession session = new OnlineGameSession(board, creatorName, roomCode);
         games.put(session.getGameId(), session);
+        gamesByRoomCode.put(roomCode, session);
         return session;
     }
 
@@ -28,6 +55,14 @@ public class OnlineGameService {
         OnlineGameSession session = games.get(gameId);
         if (session == null) {
             throw new IllegalArgumentException("Game not found: " + gameId);
+        }
+        return session;
+    }
+
+    public OnlineGameSession getGameByRoomCode(String roomCode) {
+        OnlineGameSession session = gamesByRoomCode.get(roomCode.toUpperCase());
+        if (session == null) {
+            throw new IllegalArgumentException("Game not found for room code: " + roomCode);
         }
         return session;
     }

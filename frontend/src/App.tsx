@@ -45,7 +45,18 @@ export const App: React.FC = () => {
 
   const initialOnlineGameId = useMemo(() => {
     const url = new URL(window.location.href);
-    return url.searchParams.get('gameId');
+    // Check for ?gameId= query param (legacy UUID support)
+    const gameId = url.searchParams.get('gameId');
+    if (gameId) return gameId;
+    
+    // Check for /join/<roomCode> path
+    const path = window.location.pathname;
+    const joinMatch = path.match(/^\/join\/([A-Z0-9]+)$/i);
+    if (joinMatch) {
+      return joinMatch[1].toUpperCase();
+    }
+    
+    return null;
   }, []);
 
   const [mode, setMode] = useState<'puzzles' | 'online'>(

@@ -46,6 +46,7 @@ public class OnlineGameController {
         OnlineGameStateDto stateDto = toStateDto(session);
         return ResponseEntity.ok(new CreateOnlineGameResponse(
                 session.getGameId().toString(),
+                session.getRoomCode(),
                 session.getBlackPlayerId().toString(),
                 "BLACK",
                 stateDto
@@ -55,11 +56,18 @@ public class OnlineGameController {
     @PostMapping("/{gameId}/join")
     public ResponseEntity<JoinOnlineGameResponse> join(@PathVariable String gameId,
                                                        @RequestBody JoinOnlineGameRequest request) {
-        UUID gameUuid;
+        OnlineGameSession session;
         try {
-            gameUuid = UUID.fromString(gameId);
+            // Try as UUID first, then as room code
+            try {
+                UUID gameUuid = UUID.fromString(gameId);
+                session = onlineGameService.getGame(gameUuid);
+            } catch (IllegalArgumentException ex) {
+                // Not a UUID, try as room code
+                session = onlineGameService.getGameByRoomCode(gameId);
+            }
         } catch (IllegalArgumentException ex) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
 
         String playerName = request.playerName() != null && !request.playerName().isBlank()
@@ -67,11 +75,12 @@ public class OnlineGameController {
                 : "Player 2";
 
         try {
-            UUID playerId = onlineGameService.joinGame(gameUuid, playerName);
-            OnlineGameSession session = onlineGameService.getGame(gameUuid);
-            OnlineGameStateDto stateDto = toStateDto(session);
+            UUID playerId = onlineGameService.joinGame(session.getGameId(), playerName);
+            OnlineGameSession updatedSession = onlineGameService.getGame(session.getGameId());
+            OnlineGameStateDto stateDto = toStateDto(updatedSession);
             return ResponseEntity.ok(new JoinOnlineGameResponse(
-                    gameId,
+                    updatedSession.getGameId().toString(),
+                    updatedSession.getRoomCode(),
                     playerId.toString(),
                     "WHITE",
                     stateDto
@@ -86,47 +95,67 @@ public class OnlineGameController {
     @GetMapping("/{gameId}")
     public ResponseEntity<OnlineGameStateDto> getState(@PathVariable String gameId,
                                                        @RequestParam("playerId") String playerId) {
-        UUID gameUuid;
+        OnlineGameSession session;
         UUID playerUuid;
         try {
-            gameUuid = UUID.fromString(gameId);
             playerUuid = UUID.fromString(playerId);
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
 
         try {
-            OnlineGameSession session = onlineGameService.getGame(gameUuid);
-            // For now we only check that the playerId matches one of the players if game is not waiting
-            if (session.isFull()
-                    && !(playerUuid.equals(session.getBlackPlayerId())
-                    || playerUuid.equals(session.getWhitePlayerId()))) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            // Try as UUID first, then as room code
+            try {
+                UUID gameUuid = UUID.fromString(gameId);
+                session = onlineGameService.getGame(gameUuid);
+            } catch (IllegalArgumentException ex) {
+                // Not a UUID, try as room code
+                session = onlineGameService.getGameByRoomCode(gameId);
             }
-
-            return ResponseEntity.ok(toStateDto(session));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
+
+        // For now we only check that the playerId matches one of the players if game is not waiting
+        if (session.isFull()
+                && !(playerUuid.equals(session.getBlackPlayerId())
+                || playerUuid.equals(session.getWhitePlayerId()))) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        return ResponseEntity.ok(toStateDto(session));
     }
 
     @PostMapping("/{gameId}/moves")
     public ResponseEntity<OnlineMoveResponse> move(@PathVariable String gameId,
                                                    @RequestBody OnlineMoveRequest request) {
-        UUID gameUuid;
+        OnlineGameSession session;
         UUID playerUuid;
         try {
-            gameUuid = UUID.fromString(gameId);
             playerUuid = UUID.fromString(request.playerId());
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
-                    new OnlineMoveResponse("BAD_REQUEST", "Invalid gameId or playerId", null)
+                    new OnlineMoveResponse("BAD_REQUEST", "Invalid playerId", null)
             );
         }
 
         try {
+            // Try as UUID first, then as room code
+            try {
+                UUID gameUuid = UUID.fromString(gameId);
+                session = onlineGameService.getGame(gameUuid);
+            } catch (IllegalArgumentException ex) {
+                // Not a UUID, try as room code
+                session = onlineGameService.getGameByRoomCode(gameId);
+            }
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new OnlineMoveResponse("GAME_NOT_FOUND", "Game not found", null));
+        }
+
+        try {
             OnlineGameService.MoveResult result =
-                    onlineGameService.playMove(gameUuid, playerUuid, request.x(), request.y());
+                    onlineGameService.playMove(session.getGameId(), playerUuid, request.x(), request.y());
 
             OnlineGameStateDto stateDto = toStateDto(result.session());
             return ResponseEntity.ok(new OnlineMoveResponse(
