@@ -32,13 +32,14 @@ type Props = {
 };
 
 export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
-  const [mode, setMode] = useState<'idle' | 'creating' | 'joining' | 'playing'>('idle');
+  const [phase, setPhase] = useState<'setup' | 'playing'>('setup');
   const [playerName, setPlayerName] = useState('');
   const [gameId, setGameId] = useState<string | null>(initialGameId ?? null);
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [color, setColor] = useState<'BLACK' | 'WHITE' | string | null>(null);
   const [state, setState] = useState<OnlineGameState | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [autoJoinInProgress, setAutoJoinInProgress] = useState(false);
 
   const shareUrl = useMemo(() => {
     if (!gameId) return null;
@@ -47,12 +48,40 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
     return url.toString();
   }, [gameId]);
 
+  // If we land on a shared link with ?gameId=..., auto-join as the second player.
   useEffect(() => {
-    if (initialGameId && !gameId) {
-      setGameId(initialGameId);
-      setMode('joining');
+    if (!initialGameId || gameId || playerId || state || autoJoinInProgress) {
+      return;
     }
-  }, [initialGameId, gameId]);
+    setGameId(initialGameId);
+    setAutoJoinInProgress(true);
+    setStatusMessage(null);
+
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/online-games/${initialGameId}/join`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ playerName: 'Player 2' })
+        });
+        if (!res.ok) {
+          setStatusMessage(`Failed to auto-join game: ${res.status}`);
+          setPhase('setup');
+          return;
+        }
+        const data: JoinOnlineGameResponse = await res.json();
+        setPlayerId(data.playerId);
+        setColor(data.color);
+        setState(data.state);
+        setPhase('playing');
+      } catch (err) {
+        setStatusMessage((err as Error).message);
+        setPhase('setup');
+      } finally {
+        setAutoJoinInProgress(false);
+      }
+    })();
+  }, [initialGameId, gameId, playerId, state, autoJoinInProgress]);
 
   // Polling
   useEffect(() => {
@@ -95,7 +124,16 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
       setPlayerId(data.playerId);
       setColor(data.color);
       setState(data.state);
-      setMode('playing');
+      setPhase('playing');
+
+      // Update the URL so the creator is on the shareable game link.
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set('gameId', data.gameId);
+        window.history.replaceState({}, '', url.toString());
+      } catch {
+        // ignore URL errors
+      }
     } catch (err) {
       setStatusMessage((err as Error).message);
     }
@@ -118,7 +156,7 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
       setPlayerId(data.playerId);
       setColor(data.color);
       setState(data.state);
-      setMode('playing');
+      setPhase('playing');
     } catch (err) {
       setStatusMessage((err as Error).message);
     }
@@ -154,69 +192,91 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
   return (
     <div>
       <h2>Play Go Online</h2>
-      {mode === 'idle' && (
-        <div className="online-actions">
-          <button type="button" onClick={() => setMode('creating')}>
-            Create game
-          </button>
-          <button type="button" onClick={() => setMode('joining')}>
-            Join game
-          </button>
+      {phase === 'setup' && (
+        <div className="online-setup">
+          <div className="online-column">
+            <h3>Start a new game</h3>
+            <p>You will be Black. Share the game code with your friend so they can join as White.</p>
+            <form onSubmit={handleCreate} className="online-form">
+              <label>
+                Your name
+                <input
+                  value={playerName}
+                  onChange={e => setPlayerName(e.target.value)}
+                  placeholder="Player 1"
+                />
+              </label>
+              <button type="submit">Create game</button>
+            </form>
+          </div>
+          <div className="online-column">
+            <h3>Join a game</h3>
+            <p>Paste the game code you received and choose your name.</p>
+            <form onSubmit={handleJoin} className="online-form">
+              <label>
+                Game code
+                <input
+                  value={gameId ?? ''}
+                  onChange={e => setGameId(e.target.value)}
+                  placeholder="Paste game code"
+                />
+              </label>
+              <label>
+                Your name
+                <input
+                  value={playerName}
+                  onChange={e => setPlayerName(e.target.value)}
+                  placeholder="Player 2"
+                />
+              </label>
+              <button type="submit" disabled={!gameId}>
+                Join game
+              </button>
+            </form>
+          </div>
         </div>
       )}
 
-      {mode === 'creating' && (
-        <form onSubmit={handleCreate} className="online-form">
-          <label>
-            Your name
-            <input
-              value={playerName}
-              onChange={e => setPlayerName(e.target.value)}
-              placeholder="Player 1"
-            />
-          </label>
-          <button type="submit">Create</button>
-        </form>
-      )}
-
-      {mode === 'joining' && (
-        <form onSubmit={handleJoin} className="online-form">
-          {!gameId && (
-            <label>
-              Game ID
-              <input
-                value={gameId ?? ''}
-                onChange={e => setGameId(e.target.value)}
-                placeholder="Paste game ID"
-              />
-            </label>
-          )}
-          <label>
-            Your name
-            <input
-              value={playerName}
-              onChange={e => setPlayerName(e.target.value)}
-              placeholder="Player 2"
-            />
-          </label>
-          <button type="submit" disabled={!gameId}>
-            Join
-          </button>
-        </form>
-      )}
-
-      {mode === 'playing' && boardState && (
+      {phase === 'playing' && boardState && (
         <div className="online-game">
           <div className="online-info">
-            <div>Game ID: {gameId}</div>
+            <div className="online-row">
+              <label>
+                Your display name
+                <input
+                  value={playerName}
+                  onChange={e => {
+                    const value = e.target.value;
+                    setPlayerName(value);
+                    setState(prev =>
+                      prev
+                        ? {
+                            ...prev,
+                            blackPlayerName:
+                              color === 'BLACK' ? value : prev.blackPlayerName,
+                            whitePlayerName:
+                              color === 'WHITE' ? value : prev.whitePlayerName
+                          }
+                        : prev
+                    );
+                  }}
+                  placeholder="Your name"
+                />
+              </label>
+            </div>
+            <div>Game code: {gameId}</div>
             {shareUrl && (
               <div>
                 Share this link with your opponent:
                 <div className="share-url">{shareUrl}</div>
               </div>
             )}
-            <div>You are: {color}</div>
-            <div>Current turn: {state?.currentTurn}</div>
+            <div>You are playing as: {color}</div>
+            <div>
+              {state?.status === 'WAITING_FOR_OPPONENT'
+                ? 'Waiting for opponent to join...'
+                : `Current turn: ${state?.currentTurn}`}
+            </div>
             <div>
               Black: {state?.blackPlayerName ?? '—'} | White: {state?.whitePlayerName ?? '—'}
             </div>

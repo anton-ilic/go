@@ -42,12 +42,15 @@ export const App: React.FC = () => {
   const [loadingPuzzles, setLoadingPuzzles] = useState(false);
   const [currentGame, setCurrentGame] = useState<CreateGameResponse | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [mode, setMode] = useState<'puzzles' | 'online'>('puzzles');
 
   const initialOnlineGameId = useMemo(() => {
     const url = new URL(window.location.href);
     return url.searchParams.get('gameId');
   }, []);
+
+  const [mode, setMode] = useState<'puzzles' | 'online'>(
+    initialOnlineGameId ? 'online' : 'puzzles'
+  );
 
   useEffect(() => {
     const loadPuzzles = async () => {
