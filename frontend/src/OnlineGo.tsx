@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Board } from './components/Board';
 import type { BoardState } from './App';
 
@@ -36,10 +36,16 @@ type OnlineMoveResponse = {
 
 type Props = {
   initialGameId?: string | null;
+  onBack?: () => void;
+  onSwitchToPuzzles?: () => void;
+  onGameStateChange?: (state: OnlineGameState | null) => void;
+  onMoveHandlerChange?: (handler: ((x: number, y: number) => void) | null) => void;
 };
 
-export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
-  const [phase, setPhase] = useState<'setup' | 'playing'>('setup');
+export const OnlineGo: React.FC<Props> = ({ initialGameId, onBack, onSwitchToPuzzles, onGameStateChange, onMoveHandlerChange }) => {
+  const [phase, setPhase] = useState<'menu' | 'create' | 'join' | 'rejoin' | 'playing'>(
+    initialGameId ? 'rejoin' : 'menu'
+  );
   const [playerName, setPlayerName] = useState('');
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [gameId, setGameId] = useState<string | null>(initialGameId ?? null);
@@ -48,6 +54,7 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
   const [state, setState] = useState<OnlineGameState | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [autoJoinInProgress, setAutoJoinInProgress] = useState(false);
+  const [rejoinGameState, setRejoinGameState] = useState<OnlineGameState | null>(null);
 
   const shareUrl = useMemo(() => {
     if (!roomCode) return null;
@@ -55,50 +62,57 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
     return `${baseUrl}/join/${roomCode}`;
   }, [roomCode]);
 
-  // If we land on a shared link with room code, auto-join as the second player.
+  // If we land on a shared link with room code, fetch game state for rejoin
   useEffect(() => {
-    if (!initialGameId || playerId || state || autoJoinInProgress) {
+    if (!initialGameId || rejoinGameState || autoJoinInProgress || phase !== 'rejoin') {
       return;
     }
-    // If we have an initialGameId (from URL), try to auto-join
     const roomCodeToJoin = initialGameId;
     setAutoJoinInProgress(true);
     setStatusMessage(null);
 
     (async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/online-games/${roomCodeToJoin}/join`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ playerName: 'Player 2' })
-        });
-        if (!res.ok) {
-          if (res.status === 409) {
-            setStatusMessage('Game is already full. Please create a new game.');
-          } else {
-            setStatusMessage(`Failed to join game: ${res.status}`);
+        // Check if we have stored player info for this game
+        const storedInfo = localStorage.getItem(`game_${roomCodeToJoin}`);
+        if (storedInfo) {
+          const { playerId: storedPlayerId, color: storedColor, playerName: storedName } = JSON.parse(storedInfo);
+          // Try to get game state with stored playerId
+          const res = await fetch(`${API_BASE_URL}/online-games/${roomCodeToJoin}?playerId=${encodeURIComponent(storedPlayerId)}`);
+          if (res.ok) {
+            const data: OnlineGameState = await res.json();
+            setRejoinGameState(data);
+            setGameId(roomCodeToJoin);
+            setRoomCode(roomCodeToJoin);
+            setPlayerId(storedPlayerId);
+            setColor(storedColor);
+            setPlayerName(storedName);
+            setState(data);
+            setPhase('playing');
+            setAutoJoinInProgress(false);
+            return;
           }
-          setPhase('setup');
-          return;
         }
-        const data: JoinOnlineGameResponse = await res.json();
-        setGameId(data.gameId);
-        setRoomCode(data.roomCode);
-        setPlayerId(data.playerId);
-        setColor(data.color);
-        setState(data.state);
-        setPlayerName(data.state.whitePlayerName || 'Player 2');
-        setPhase('playing');
-        // Update URL to use /join/<roomCode> format
-        window.history.replaceState({}, '', `/join/${data.roomCode}`);
+
+        // If no stored info or stored playerId doesn't work, fetch game state
+        const res = await fetch(`${API_BASE_URL}/online-games/${roomCodeToJoin}?playerId=temp`);
+        if (res.ok) {
+          const data: OnlineGameState = await res.json();
+          setRejoinGameState(data);
+          setGameId(roomCodeToJoin);
+          setRoomCode(roomCodeToJoin);
+        } else if (res.status === 404) {
+          setStatusMessage('Game not found. The room code may be invalid.');
+          setPhase('menu');
+        }
       } catch (err) {
         setStatusMessage((err as Error).message);
-        setPhase('setup');
+        setPhase('menu');
       } finally {
         setAutoJoinInProgress(false);
       }
     })();
-  }, [initialGameId, playerId, state, autoJoinInProgress]);
+  }, [initialGameId, rejoinGameState, autoJoinInProgress, phase]);
 
   // Polling
   useEffect(() => {
@@ -118,22 +132,27 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
         }
         const data: OnlineGameState = await res.json();
         setState(data);
+        onGameStateChange?.(data);
       } catch {
         // ignore transient errors
       }
     }, 1500);
 
     return () => window.clearInterval(interval);
-  }, [gameId, roomCode, playerId, state?.status]);
+  }, [gameId, roomCode, playerId, state?.status, onGameStateChange]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!playerName.trim()) {
+      setStatusMessage('Please enter your name');
+      return;
+    }
     setStatusMessage(null);
     try {
       const res = await fetch(`${API_BASE_URL}/online-games`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerName: playerName || 'Player 1' })
+        body: JSON.stringify({ playerName: playerName.trim() })
       });
       if (!res.ok) {
         throw new Error(`Failed to create game: ${res.status}`);
@@ -143,12 +162,20 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
       setRoomCode(data.roomCode);
       setPlayerId(data.playerId);
       setColor(data.color);
-      setState(data.state);
-      setPlayerName(playerName || data.state.blackPlayerName || 'Player 1');
-      setPhase('playing');
+        setState(data.state);
+        setPlayerName(playerName.trim());
+        setPhase('playing');
+        onGameStateChange?.(data.state);
 
-      // Update the URL to use /join/<roomCode> format
-      window.history.replaceState({}, '', `/join/${data.roomCode}`);
+        // Store player info in localStorage for rejoin
+        localStorage.setItem(`game_${data.roomCode}`, JSON.stringify({
+          playerId: data.playerId,
+          color: data.color,
+          playerName: playerName.trim()
+        }));
+
+        // Update the URL to use /join/<roomCode> format
+        window.history.replaceState({}, '', `/join/${data.roomCode}`);
     } catch (err) {
       setStatusMessage((err as Error).message);
     }
@@ -156,33 +183,118 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!gameId) return;
+    if (!gameId || gameId.length !== 6) {
+      setStatusMessage('Please enter a valid 6-character room code');
+      return;
+    }
+    if (!playerName.trim()) {
+      setStatusMessage('Please enter your name');
+      return;
+    }
     setStatusMessage(null);
     try {
       const res = await fetch(`${API_BASE_URL}/online-games/${gameId}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerName: playerName || 'Player 2' })
+        body: JSON.stringify({ playerName: playerName.trim() })
       });
       if (!res.ok) {
-        throw new Error(`Failed to join game: ${res.status}`);
+        if (res.status === 409) {
+          setStatusMessage('Game is already full. Please create a new game.');
+        } else if (res.status === 404) {
+          setStatusMessage('Game not found. Please check the room code.');
+        } else {
+          throw new Error(`Failed to join game: ${res.status}`);
+        }
+        return;
       }
       const data: JoinOnlineGameResponse = await res.json();
       setGameId(data.gameId);
       setRoomCode(data.roomCode);
       setPlayerId(data.playerId);
       setColor(data.color);
-      setState(data.state);
-      setPlayerName(playerName || data.state.whitePlayerName || 'Player 2');
-      setPhase('playing');
-      // Update URL to use /join/<roomCode> format
-      window.history.replaceState({}, '', `/join/${data.roomCode}`);
+        setState(data.state);
+        setPlayerName(playerName.trim());
+        setPhase('playing');
+        onGameStateChange?.(data.state);
+
+        // Store player info in localStorage for rejoin
+        localStorage.setItem(`game_${data.roomCode}`, JSON.stringify({
+          playerId: data.playerId,
+          color: data.color,
+          playerName: playerName.trim()
+        }));
+
+        // Update URL to use /join/<roomCode> format
+        window.history.replaceState({}, '', `/join/${data.roomCode}`);
     } catch (err) {
       setStatusMessage((err as Error).message);
     }
   };
 
-  const handlePlayMove = async (x: number, y: number) => {
+  const handleRejoin = async (selectedColor?: 'BLACK' | 'WHITE') => {
+    if (!gameId || !playerName.trim()) {
+      setStatusMessage('Please enter your name');
+      return;
+    }
+    setStatusMessage(null);
+    try {
+      // If game is waiting, join as second player
+      if (rejoinGameState?.status === 'WAITING_FOR_OPPONENT') {
+        const res = await fetch(`${API_BASE_URL}/online-games/${gameId}/join`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ playerName: playerName.trim() })
+        });
+        if (!res.ok) {
+          if (res.status === 409) {
+            setStatusMessage('Game is already full.');
+          } else {
+            throw new Error(`Failed to join game: ${res.status}`);
+          }
+          return;
+        }
+        const data: JoinOnlineGameResponse = await res.json();
+        setPlayerId(data.playerId);
+        setColor(data.color);
+        setState(data.state);
+        setPlayerName(playerName.trim());
+        setPhase('playing');
+        onGameStateChange?.(data.state);
+
+        // Store player info
+        localStorage.setItem(`game_${gameId}`, JSON.stringify({
+          playerId: data.playerId,
+          color: data.color,
+          playerName: playerName.trim()
+        }));
+      } else if (rejoinGameState?.status === 'IN_PROGRESS') {
+        // If game is in progress, check if we have stored player info
+        const storedInfo = localStorage.getItem(`game_${gameId}`);
+        if (storedInfo) {
+          const { playerId: storedPlayerId, color: storedColor } = JSON.parse(storedInfo);
+          // Try to get game state with stored playerId
+          const res = await fetch(`${API_BASE_URL}/online-games/${gameId}?playerId=${encodeURIComponent(storedPlayerId)}`);
+          if (res.ok) {
+            const currentState: OnlineGameState = await res.json();
+            setState(currentState);
+            onGameStateChange?.(currentState);
+            setPlayerId(storedPlayerId);
+            setColor(storedColor);
+            setPhase('playing');
+          } else {
+            setStatusMessage('Could not rejoin. You may need to join as a spectator or create a new game.');
+          }
+        } else {
+          setStatusMessage('This game is in progress. If you were playing, please use the same browser/device where you started the game.');
+        }
+      }
+    } catch (err) {
+      setStatusMessage((err as Error).message);
+    }
+  };
+
+  const handlePlayMove = useCallback(async (x: number, y: number) => {
     if (!gameId || !playerId || !state) return;
     if (state.status !== 'IN_PROGRESS') return;
     if ((state.currentTurn === 'BLACK' && color !== 'BLACK') ||
@@ -203,11 +315,21 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
       }
       const data: OnlineMoveResponse = await res.json();
       setState(data.state);
+      onGameStateChange?.(data.state);
       setStatusMessage(data.message);
     } catch (err) {
       setStatusMessage((err as Error).message);
     }
-  };
+  }, [gameId, playerId, state, color, roomCode, onGameStateChange]);
+
+  // Update move handler when game state changes
+  useEffect(() => {
+    if (phase === 'playing' && state?.status === 'IN_PROGRESS') {
+      onMoveHandlerChange?.(handlePlayMove);
+    } else {
+      onMoveHandlerChange?.(null);
+    }
+  }, [phase, state?.status, handlePlayMove, onMoveHandlerChange]);
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -226,13 +348,50 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
 
   return (
     <div className="online-go-container">
-      {phase === 'setup' && (
-        <div className="online-setup">
-          <div className="online-column">
-            <div className="online-column-header">
-              <h3>Create Room</h3>
-              <p>Start a new game as Black</p>
+      {phase === 'menu' && (
+        <div className="play-menu">
+          <h2 className="play-menu-title">
+            <span className="menu-icon-large">⚫</span>
+            Play
+          </h2>
+          <div className="play-options">
+            <div className="play-option-card" onClick={() => {
+              if (onSwitchToPuzzles) {
+                onSwitchToPuzzles();
+              }
+            }}>
+              <div className="play-option-icon">🧩</div>
+              <div className="play-option-content">
+                <div className="play-option-title">Play Puzzle</div>
+                <div className="play-option-subtitle">Solve Go puzzles and improve your skills</div>
+              </div>
             </div>
+            <div className="play-option-card" onClick={() => setPhase('create')}>
+              <div className="play-option-icon">⚡</div>
+              <div className="play-option-content">
+                <div className="play-option-title">Create Room</div>
+                <div className="play-option-subtitle">Start a new game and invite a friend</div>
+              </div>
+            </div>
+            <div className="play-option-card" onClick={() => setPhase('join')}>
+              <div className="play-option-icon">🤝</div>
+              <div className="play-option-content">
+                <div className="play-option-title">Join Room</div>
+                <div className="play-option-subtitle">Enter a room code to join a game</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {phase === 'create' && (
+        <div className="online-form-container">
+          <button className="back-button" onClick={() => setPhase('menu')}>
+            ← Back
+          </button>
+          <div className="form-card">
+            <h2>Create Room</h2>
+            <p className="form-subtitle">Start a new game as Black</p>
             <form onSubmit={handleCreate} className="online-form">
               <label>
                 Your name
@@ -246,11 +405,17 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
               <button type="submit" className="btn-primary">Create Game</button>
             </form>
           </div>
-          <div className="online-column">
-            <div className="online-column-header">
-              <h3>Join Room</h3>
-              <p>Enter a room code to join</p>
-            </div>
+        </div>
+      )}
+
+      {phase === 'join' && (
+        <div className="online-form-container">
+          <button className="back-button" onClick={() => setPhase('menu')}>
+            ← Back
+          </button>
+          <div className="form-card">
+            <h2>Join Room</h2>
+            <p className="form-subtitle">Enter a room code to join</p>
             <form onSubmit={handleJoin} className="online-form">
               <label>
                 Room code
@@ -259,7 +424,7 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
                   onChange={e => setGameId(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
                   placeholder="e.g. AB3K9Q"
                   maxLength={6}
-                  autoFocus={!!initialGameId}
+                  autoFocus
                 />
               </label>
               <label>
@@ -278,10 +443,65 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
         </div>
       )}
 
+      {phase === 'rejoin' && rejoinGameState && (
+        <div className="online-form-container">
+          <button className="back-button" onClick={onBack}>
+            ← Back to Menu
+          </button>
+          <div className="form-card">
+            <h2>Rejoin Game</h2>
+            <p className="form-subtitle">Room: {roomCode}</p>
+            {rejoinGameState.status === 'WAITING_FOR_OPPONENT' && (
+              <div className="rejoin-info">
+                <p>This game is waiting for a second player.</p>
+                <form onSubmit={(e) => { e.preventDefault(); handleRejoin(); }} className="online-form">
+                  <label>
+                    Your name
+                    <input
+                      value={playerName}
+                      onChange={e => setPlayerName(e.target.value)}
+                      placeholder="Enter your name"
+                      autoFocus
+                    />
+                  </label>
+                  <button type="submit" className="btn-primary">Join as White</button>
+                </form>
+              </div>
+            )}
+            {rejoinGameState.status === 'IN_PROGRESS' && (
+              <div className="rejoin-info">
+                <p>This game is in progress.</p>
+                <div className="players-preview">
+                  <div className="player-preview">
+                    <span className="player-color black">●</span>
+                    <span>{rejoinGameState.blackPlayerName || 'Black'}</span>
+                  </div>
+                  <div className="player-preview">
+                    <span className="player-color white">●</span>
+                    <span>{rejoinGameState.whitePlayerName || 'White'}</span>
+                  </div>
+                </div>
+                <form onSubmit={(e) => { e.preventDefault(); handleRejoin(); }} className="online-form">
+                  <label>
+                    Your name
+                    <input
+                      value={playerName}
+                      onChange={e => setPlayerName(e.target.value)}
+                      placeholder="Enter your name to rejoin"
+                      autoFocus
+                    />
+                  </label>
+                  <button type="submit" className="btn-primary">Rejoin Game</button>
+                </form>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {phase === 'playing' && boardState && (
-        <div className="online-game-layout">
-          <div className="online-sidebar">
-            <div className="game-info-card">
+        <div className="game-info-sidebar">
+          <div className="game-info-card">
               <div className="player-section">
                 <label className="player-name-label">
                   Your name
@@ -378,16 +598,6 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId }) => {
               </div>
             </div>
           </div>
-
-          <div className="board-container">
-            <Board board={boardState} onPlayMove={handlePlayMove} />
-            {!isMyTurn && state?.status === 'IN_PROGRESS' && (
-              <div className="board-overlay">
-                <div className="overlay-message">Waiting for opponent's move...</div>
-              </div>
-            )}
-          </div>
-        </div>
       )}
 
       {autoJoinInProgress && (

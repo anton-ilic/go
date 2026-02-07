@@ -132,57 +132,171 @@ export const App: React.FC = () => {
   };
 
   const boardState = currentGame?.state.board;
+  const [onlineGameState, setOnlineGameState] = useState<any>(null);
+  const [onlineMoveHandler, setOnlineMoveHandler] = useState<((x: number, y: number) => void) | null>(null);
+
+  // Free-play sandbox: let users place stones when no game is active
+  const [sandboxStones, setSandboxStones] = useState<Stone[]>([]);
+  const [sandboxNextColor, setSandboxNextColor] = useState<'BLACK' | 'WHITE'>('BLACK');
+
+  const handleSandboxMove = (x: number, y: number) => {
+    // Toggle: if a stone already exists at this intersection, remove it
+    const existingIdx = sandboxStones.findIndex(s => s.x === x && s.y === y);
+    if (existingIdx >= 0) {
+      setSandboxStones(prev => prev.filter((_, i) => i !== existingIdx));
+      return;
+    }
+    // Place a new stone
+    setSandboxStones(prev => [...prev, { x, y, color: sandboxNextColor }]);
+    setSandboxNextColor(prev => prev === 'BLACK' ? 'WHITE' : 'BLACK');
+  };
+
+  // Empty board for sandbox mode
+  const sandboxBoardState: BoardState = {
+    boardSize: 19,
+    stones: sandboxStones
+  };
+
+  const isInGame = !!(currentGame || onlineGameState);
+  const displayBoardState = boardState || (onlineGameState?.board) || sandboxBoardState;
+
+  const handleBoardMove = (x: number, y: number) => {
+    if (mode === 'online' && onlineMoveHandler) {
+      onlineMoveHandler(x, y);
+    } else if (mode === 'puzzles' && currentGame) {
+      handlePlayMove(x, y);
+    } else if (!isInGame) {
+      // Sandbox free-play mode
+      handleSandboxMove(x, y);
+    }
+  };
 
   return (
-    <div className="app">
+    <div className="app chess-layout">
       <header className="app-header">
-        <h1>Go Puzzles</h1>
-        <nav className="app-nav">
-          <button
-            type="button"
-            className={mode === 'puzzles' ? 'active' : ''}
-            onClick={() => setMode('puzzles')}
-          >
-            Puzzles
-          </button>
-          <button
-            type="button"
-            className={mode === 'online' ? 'active' : ''}
-            onClick={() => setMode('online')}
-          >
-            Play Go Online
-          </button>
-        </nav>
+        <h1>Let's play GO!</h1>
       </header>
-      <main className="app-main">
-        {mode === 'puzzles' && (
-          <>
-            <section className="sidebar">
+      <main className="app-main chess-main">
+        {/* Left side: Board */}
+        <div className="board-container-left">
+          {(currentGame || onlineGameState) && (
+            <div className="player-info-top">
+              <div className="player-label">Opponent</div>
+            </div>
+          )}
+          <div className="board-wrapper">
+            <Board board={displayBoardState} onPlayMove={handleBoardMove} />
+          </div>
+          {(currentGame || onlineGameState) && (
+            <div className="player-info-bottom">
+              <div className="player-label">Player</div>
+            </div>
+          )}
+        </div>
+
+        {/* Right side: Menu/Options */}
+        <div className="menu-container-right">
+          {mode === 'puzzles' && !currentGame && (
+            <div className="play-menu">
+              <h2 className="play-menu-title">
+                <span className="menu-icon-large">⚫</span>
+                Play
+              </h2>
+              <div className="play-options">
+                <div className="play-option-card" onClick={() => {
+                  setMode('puzzles');
+                }}>
+                  <div className="play-option-icon">🧩</div>
+                  <div className="play-option-content">
+                    <div className="play-option-title">Play Puzzle</div>
+                    <div className="play-option-subtitle">Solve Go puzzles and improve your skills</div>
+                  </div>
+                </div>
+                <div className="play-option-card" onClick={() => {
+                  setMode('online');
+                }}>
+                  <div className="play-option-icon">⚡</div>
+                  <div className="play-option-content">
+                    <div className="play-option-title">Create Room</div>
+                    <div className="play-option-subtitle">Start a new game and invite a friend</div>
+                  </div>
+                </div>
+                <div className="play-option-card" onClick={() => {
+                  setMode('online');
+                }}>
+                  <div className="play-option-icon">🤝</div>
+                  <div className="play-option-content">
+                    <div className="play-option-title">Join Room</div>
+                    <div className="play-option-subtitle">Enter a room code to join a game</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sandbox controls */}
+              <div className="sandbox-controls">
+                <div className="sandbox-label">
+                  Free play — click the board to place stones
+                </div>
+                <div className="sandbox-actions">
+                  <span className="sandbox-next">
+                    Next: <span className={`sandbox-color-dot ${sandboxNextColor.toLowerCase()}`}>●</span>
+                  </span>
+                  {sandboxStones.length > 0 && (
+                    <button className="btn-clear-board" onClick={() => {
+                      setSandboxStones([]);
+                      setSandboxNextColor('BLACK');
+                    }}>
+                      Clear board
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {mode === 'puzzles' && currentGame && (
+            <div className="puzzle-sidebar">
+              <button 
+                className="back-button"
+                onClick={() => {
+                  setCurrentGame(null);
+                  setMode('puzzles');
+                }}
+              >
+                ← Back
+              </button>
               <h2>Puzzles</h2>
               <PuzzleList
                 puzzles={puzzles}
                 loading={loadingPuzzles}
                 onSelectPuzzle={handleSelectPuzzle}
               />
-            </section>
-            <section className="board-section">
-              {boardState ? (
-                <Board board={boardState} onPlayMove={handlePlayMove} />
-              ) : (
-                <p>Select a puzzle to begin.</p>
-              )}
               {currentGame?.state.solved && (
-                <p className="status solved">Puzzle solved! 🎉</p>
+                <div className="status-message solved">Puzzle solved! 🎉</div>
               )}
-              {statusMessage && <p className="status">{statusMessage}</p>}
-            </section>
-          </>
-        )}
-        {mode === 'online' && (
-          <section className="board-section full-width">
-            <OnlineGo initialGameId={initialOnlineGameId} />
-          </section>
-        )}
+              {statusMessage && <div className="status-message">{statusMessage}</div>}
+            </div>
+          )}
+
+          {mode === 'online' && (
+            <OnlineGo 
+              initialGameId={initialOnlineGameId}
+              onBack={() => {
+                setMode('puzzles');
+                setCurrentGame(null);
+                setOnlineGameState(null);
+                setOnlineMoveHandler(null);
+              }}
+              onSwitchToPuzzles={() => {
+                setMode('puzzles');
+                setOnlineGameState(null);
+                setOnlineMoveHandler(null);
+              }}
+              onGameStateChange={setOnlineGameState}
+              onMoveHandlerChange={setOnlineMoveHandler}
+            />
+          )}
+        </div>
       </main>
     </div>
   );
