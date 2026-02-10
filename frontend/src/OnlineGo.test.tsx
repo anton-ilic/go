@@ -12,16 +12,27 @@ describe('OnlineGo', () => {
     vi.unstubAllGlobals();
   });
 
-  it('renders mode buttons', () => {
-    render(<OnlineGo />);
-    expect(screen.getByText(/Create game/i)).toBeInTheDocument();
-    expect(screen.getByText(/Join game/i)).toBeInTheDocument();
+  it('shows creating state when no roomId', () => {
+    render(
+      <OnlineGo
+        roomId={null}
+        onBack={() => {}}
+        onBoardState={() => {}}
+        onMoveHandler={() => {}}
+      />
+    );
+    expect(screen.getByText(/Creating room/i)).toBeInTheDocument();
   });
 
-  it('renders without polling or board before game starts', () => {
-    render(<OnlineGo />);
-    // no board is rendered yet, so nothing to poll/click
-    expect(screen.queryByTestId('board-cell')).toBeNull();
+  it('shows connecting state when roomId is provided', () => {
+    render(
+      <OnlineGo
+        roomId="ABC12345"
+        onBack={() => {}}
+        onBoardState={() => {}}
+        onMoveHandler={() => {}}
+      />
+    );
+    expect(screen.getByText(/Connecting/i)).toBeInTheDocument();
   });
 });
-

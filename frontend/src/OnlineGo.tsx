@@ -1,733 +1,568 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Board } from './components/Board';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import type { BoardState } from './App';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
-type OnlineGameState = {
+/**
+ * Derive WebSocket URL. If API_BASE_URL is relative (e.g. /api),
+ * use the current page's host. Otherwise parse the configured URL.
+ */
+function getWsBaseUrl(): string {
+  if (API_BASE_URL.startsWith('/')) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}`;
+  }
+  const url = new URL(API_BASE_URL);
+  const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${url.host}`;
+}
+
+export type RoomState = {
+  roomId: string;
+  turn: 'BLACK' | 'WHITE';
+  moveNumber: number;
   board: BoardState;
-  currentTurn: 'BLACK' | 'WHITE' | string;
-  status: 'WAITING_FOR_OPPONENT' | 'IN_PROGRESS' | 'FINISHED' | string;
-  blackPlayerName: string | null;
-  whitePlayerName: string | null;
-};
-
-type CreateOnlineGameResponse = {
-  gameId: string;
-  roomCode: string;
-  playerId: string;
-  color: 'BLACK' | 'WHITE' | string;
-  state: OnlineGameState;
-};
-
-type JoinOnlineGameResponse = {
-  gameId: string;
-  roomCode: string;
-  playerId: string;
-  color: 'BLACK' | 'WHITE' | string;
-  state: OnlineGameState;
-};
-
-type OnlineMoveResponse = {
-  status: string;
-  message: string;
-  state: OnlineGameState;
 };
 
 type Props = {
-  initialGameId?: string | null;
-  initialPhase?: 'create' | 'join' | 'menu';
-  onBack?: () => void;
-  onSwitchToPuzzles?: () => void;
-  onGameStateChange?: (state: OnlineGameState | null) => void;
-  onMoveHandlerChange?: (handler: ((x: number, y: number) => void) | null) => void;
+  roomId: string | null;          // null = "create room" flow, string = "join existing room"
+  onBack: () => void;
+  onBoardState: (board: BoardState | null) => void;
+  onMoveHandler: (handler: ((x: number, y: number) => void) | null) => void;
+  onRoomCreated?: (roomId: string) => void;  // Callback when room is created
 };
 
-export const OnlineGo: React.FC<Props> = ({ initialGameId, initialPhase, onBack, onSwitchToPuzzles, onGameStateChange, onMoveHandlerChange }) => {
-  // Determine initial phase
-  const [phase, setPhase] = useState<'menu' | 'create' | 'join' | 'rejoin' | 'playing'>(() => {
-    if (initialGameId) return 'rejoin';
-    if (initialPhase) return initialPhase;
-    return 'menu';
-  });
-  const [playerName, setPlayerName] = useState('');
-  const [roomCode, setRoomCode] = useState<string | null>(null);
-  const [gameId, setGameId] = useState<string | null>(initialGameId ?? null);
-  const [playerId, setPlayerId] = useState<string | null>(null);
-  const [color, setColor] = useState<'BLACK' | 'WHITE' | string | null>(null);
-  const [state, setState] = useState<OnlineGameState | null>(null);
+export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoardState, onMoveHandler, onRoomCreated }) => {
+  const [phase, setPhase] = useState<'creating' | 'joining' | 'connected' | 'error'>(
+    initialRoomId ? 'joining' : 'creating'
+  );
+  const [roomId, setRoomId] = useState<string | null>(initialRoomId);
+  const [roomState, setRoomState] = useState<RoomState | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [autoJoinInProgress, setAutoJoinInProgress] = useState(false);
-  const [rejoinGameState, setRejoinGameState] = useState<OnlineGameState | null>(null);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<number | null>(null);
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
 
   const shareUrl = useMemo(() => {
-    if (!roomCode) return null;
-    const baseUrl = window.location.origin;
-    return `${baseUrl}/join/${roomCode}`;
-  }, [roomCode]);
+    if (!roomId) return null;
+    return `${window.location.origin}/r/${roomId}`;
+  }, [roomId]);
 
-  // If we land on a shared link with room code, fetch game state for join
+  // --- Create room ---
   useEffect(() => {
-    if (!initialGameId || rejoinGameState || autoJoinInProgress || phase !== 'rejoin') {
-      return;
-    }
-    const roomCodeToJoin = initialGameId;
-    setAutoJoinInProgress(true);
-    setStatusMessage(null);
+    if (phase !== 'creating') return;
 
+    let cancelled = false;
     (async () => {
       try {
-        // Check if we have stored player info for this game
-        const storedInfo = localStorage.getItem(`game_${roomCodeToJoin}`);
-        if (storedInfo) {
-          const { playerId: storedPlayerId, color: storedColor, playerName: storedName } = JSON.parse(storedInfo);
-          // Try to get game state with stored playerId
-          const res = await fetch(`${API_BASE_URL}/online-games/${roomCodeToJoin}?playerId=${encodeURIComponent(storedPlayerId)}`);
-          if (res.ok) {
-            const data: OnlineGameState = await res.json();
-            setRejoinGameState(data);
-            setGameId(roomCodeToJoin);
-            setRoomCode(roomCodeToJoin);
-            setPlayerId(storedPlayerId);
-            setColor(storedColor);
-            setPlayerName(storedName);
-            setState(data);
-            setPhase('playing');
-            setAutoJoinInProgress(false);
-            onGameStateChange?.(data);
-            return;
-          }
+        console.log('Creating room...');
+        const res = await fetch(`${API_BASE_URL}/rooms`, { method: 'POST' });
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Failed to create room: ${res.status} ${errorText}`);
         }
+        const data = await res.json();
+        if (cancelled) return;
 
-        // If no stored info or stored playerId doesn't work, fetch game state (no playerId needed for waiting games)
-        const res = await fetch(`${API_BASE_URL}/online-games/${roomCodeToJoin}`);
-        if (res.ok) {
-          const data: OnlineGameState = await res.json();
-          setRejoinGameState(data);
-          setGameId(roomCodeToJoin);
-          setRoomCode(roomCodeToJoin);
-        } else if (res.status === 404) {
-          setStatusMessage('Game not found. The room code may be invalid.');
-          setPhase('menu');
-        }
+        const newRoomId = data.roomId as string;
+        console.log('Room created:', newRoomId);
+        setRoomId(newRoomId);
+        setPhase('joining');
+
+        // Notify parent component
+        onRoomCreated?.(newRoomId);
+
+        // Update the URL
+        window.history.replaceState({}, '', `/r/${newRoomId}`);
       } catch (err) {
-        setStatusMessage((err as Error).message);
-        setPhase('menu');
-      } finally {
-        setAutoJoinInProgress(false);
+        if (!cancelled) {
+          console.error('Failed to create room:', err);
+          setError((err as Error).message);
+          setPhase('error');
+        }
       }
     })();
-  }, [initialGameId, rejoinGameState, autoJoinInProgress, phase, onGameStateChange]);
 
-  // Polling
+    return () => { cancelled = true; };
+  }, [phase]);
+
+  // --- Fetch initial state via REST (fallback) ---
   useEffect(() => {
-    if (!gameId || !playerId || !state || state.status === 'FINISHED') {
-      return;
-    }
+    if (phase !== 'joining' || !roomId || roomState) return;
 
-    const interval = window.setInterval(async () => {
+    // Fetch initial state while WebSocket is connecting
+    (async () => {
       try {
-        // Use room code if available, otherwise fall back to gameId (UUID)
-        const identifier = roomCode || gameId;
-        const res = await fetch(
-          `${API_BASE_URL}/online-games/${identifier}?playerId=${encodeURIComponent(playerId)}`
-        );
-        if (!res.ok) {
-          return;
+        const res = await fetch(`${API_BASE_URL}/rooms/${roomId}`);
+        if (res.ok) {
+          const data = await res.json();
+          const state: RoomState = {
+            roomId: data.roomId,
+            turn: data.turn,
+            moveNumber: data.moveNumber,
+            board: data.board,
+          };
+          console.log('Fetched initial state via REST:', state);
+          setRoomState(state);
+          onBoardState(state.board);
         }
-        const data: OnlineGameState = await res.json();
-        setState(data);
-        onGameStateChange?.(data);
-      } catch {
-        // ignore transient errors
+      } catch (err) {
+        console.error('Failed to fetch initial state:', err);
       }
-    }, 1500);
+    })();
+  }, [phase, roomId, roomState, onBoardState]);
 
-    return () => window.clearInterval(interval);
-  }, [gameId, roomCode, playerId, state?.status, onGameStateChange]);
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!playerName.trim()) {
-      setStatusMessage('Please enter your name');
-      return;
-    }
-    setStatusMessage(null);
-    try {
-      const res = await fetch(`${API_BASE_URL}/online-games`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerName: playerName.trim() })
-      });
-      if (!res.ok) {
-        throw new Error(`Failed to create game: ${res.status}`);
-      }
-      const data: CreateOnlineGameResponse = await res.json();
-      setGameId(data.gameId);
-      setRoomCode(data.roomCode);
-      setPlayerId(data.playerId);
-      setColor(data.color);
-        setState(data.state);
-        setPlayerName(playerName.trim());
-        setPhase('playing');
-        onGameStateChange?.(data.state);
-
-        // Store player info in localStorage for rejoin
-        localStorage.setItem(`game_${data.roomCode}`, JSON.stringify({
-          playerId: data.playerId,
-          color: data.color,
-          playerName: playerName.trim()
-        }));
-
-        // Update the URL to use /join/<roomCode> format
-        window.history.replaceState({}, '', `/join/${data.roomCode}`);
-    } catch (err) {
-      setStatusMessage((err as Error).message);
-    }
-  };
-
-  const handleJoin = async (e: React.FormEvent, selectedColor?: 'BLACK' | 'WHITE') => {
-    e.preventDefault();
-    if (!gameId || gameId.length !== 6) {
-      setStatusMessage('Please enter a valid 6-character room code');
-      return;
-    }
-    if (!playerName.trim()) {
-      setStatusMessage('Please enter your name');
-      return;
-    }
-    setStatusMessage(null);
-    try {
-      const res = await fetch(`${API_BASE_URL}/online-games/${gameId}/join`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          playerName: playerName.trim(),
-          preferredColor: selectedColor || null
-        })
-      });
-      if (!res.ok) {
-        if (res.status === 409) {
-          setStatusMessage('Game is already full. Please create a new game.');
-        } else if (res.status === 404) {
-          setStatusMessage('Game not found. Please check the room code.');
-        } else {
-          throw new Error(`Failed to join game: ${res.status}`);
-        }
-        return;
-      }
-      const data: JoinOnlineGameResponse = await res.json();
-      setGameId(data.gameId);
-      setRoomCode(data.roomCode);
-      setPlayerId(data.playerId);
-      setColor(data.color);
-        setState(data.state);
-        setPlayerName(playerName.trim());
-        setPhase('playing');
-        onGameStateChange?.(data.state);
-
-        // Store player info in localStorage for rejoin
-        localStorage.setItem(`game_${data.roomCode}`, JSON.stringify({
-          playerId: data.playerId,
-          color: data.color,
-          playerName: playerName.trim()
-        }));
-
-        // Update URL to use /join/<roomCode> format
-        window.history.replaceState({}, '', `/join/${data.roomCode}`);
-    } catch (err) {
-      setStatusMessage((err as Error).message);
-    }
-  };
-
-  const handleRejoin = async (selectedColor?: 'BLACK' | 'WHITE') => {
-    if (!gameId || !playerName.trim()) {
-      setStatusMessage('Please enter your name');
-      return;
-    }
-    setStatusMessage(null);
-    try {
-      // If game is waiting, join as second player with color selection
-      if (rejoinGameState?.status === 'WAITING_FOR_OPPONENT') {
-        const res = await fetch(`${API_BASE_URL}/online-games/${gameId}/join`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            playerName: playerName.trim(),
-            preferredColor: selectedColor || null
-          })
-        });
-        if (!res.ok) {
-          if (res.status === 409) {
-            setStatusMessage('Game is already full.');
-          } else {
-            throw new Error(`Failed to join game: ${res.status}`);
-          }
-          return;
-        }
-        const data: JoinOnlineGameResponse = await res.json();
-        setPlayerId(data.playerId);
-        setColor(data.color);
-        setState(data.state);
-        setPlayerName(playerName.trim());
-        setPhase('playing');
-        onGameStateChange?.(data.state);
-
-        // Store player info
-        localStorage.setItem(`game_${gameId}`, JSON.stringify({
-          playerId: data.playerId,
-          color: data.color,
-          playerName: playerName.trim()
-        }));
-      } else if (rejoinGameState?.status === 'IN_PROGRESS') {
-        // If game is in progress, check if we have stored player info
-        const storedInfo = localStorage.getItem(`game_${gameId}`);
-        if (storedInfo) {
-          const { playerId: storedPlayerId, color: storedColor } = JSON.parse(storedInfo);
-          // Try to get game state with stored playerId
-          const res = await fetch(`${API_BASE_URL}/online-games/${gameId}?playerId=${encodeURIComponent(storedPlayerId)}`);
-          if (res.ok) {
-            const currentState: OnlineGameState = await res.json();
-            setState(currentState);
-            onGameStateChange?.(currentState);
-            setPlayerId(storedPlayerId);
-            setColor(storedColor);
-            setPhase('playing');
-          } else {
-            setStatusMessage('Could not rejoin. You may need to join as a spectator or create a new game.');
-          }
-        } else {
-          setStatusMessage('This game is in progress. If you were playing, please use the same browser/device where you started the game.');
-        }
-      }
-    } catch (err) {
-      setStatusMessage((err as Error).message);
-    }
-  };
-
-  const handleSwapColors = async () => {
-    if (!gameId || !playerId) return;
-    setStatusMessage(null);
-    try {
-      const identifier = roomCode || gameId;
-      const res = await fetch(`${API_BASE_URL}/online-games/${identifier}/swap-colors`, {
-        method: 'POST'
-      });
-      if (!res.ok) {
-        throw new Error(`Failed to swap colors: ${res.status}`);
-      }
-      const data: OnlineGameState = await res.json();
-      setState(data);
-      onGameStateChange?.(data);
-      
-      // Update our color
-      const newColor = color === 'BLACK' ? 'WHITE' : 'BLACK';
-      setColor(newColor);
-      
-      // Update stored info
-      if (roomCode) {
-        const storedInfo = localStorage.getItem(`game_${roomCode}`);
-        if (storedInfo) {
-          const info = JSON.parse(storedInfo);
-          info.color = newColor;
-          localStorage.setItem(`game_${roomCode}`, JSON.stringify(info));
-        }
-      }
-      
-      setStatusMessage('Colors swapped!');
-      setTimeout(() => setStatusMessage(null), 2000);
-    } catch (err) {
-      setStatusMessage((err as Error).message);
-    }
-  };
-
-  const handlePlayMove = useCallback(async (x: number, y: number) => {
-    if (!gameId || !playerId || !state) {
-      setStatusMessage('Not ready to play. Please wait...');
-      return;
-    }
-    if (state.status !== 'IN_PROGRESS') {
-      setStatusMessage('Game is not in progress');
-      return;
-    }
-    if ((state.currentTurn === 'BLACK' && color !== 'BLACK') ||
-        (state.currentTurn === 'WHITE' && color !== 'WHITE')) {
-      setStatusMessage("It's not your turn");
-      return;
-    }
-    setStatusMessage(null);
-    try {
-      // Use room code if available, otherwise fall back to gameId (UUID)
-      const identifier = (roomCode || gameId).toUpperCase();
-      const res = await fetch(`${API_BASE_URL}/online-games/${identifier}/moves`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId, x, y })
-      });
-      if (!res.ok) {
-        const errorText = await res.text();
-        let errorMessage = `Failed to play move: ${res.status}`;
-        try {
-          const errorData = JSON.parse(errorText);
-          if (errorData.message) {
-            errorMessage = errorData.message;
-          }
-        } catch {
-          // Use default error message
-        }
-        throw new Error(errorMessage);
-      }
-      const data: OnlineMoveResponse = await res.json();
-      setState(data.state);
-      onGameStateChange?.(data.state);
-      setStatusMessage(data.message);
-    } catch (err) {
-      setStatusMessage((err as Error).message);
-    }
-  }, [gameId, playerId, state, color, roomCode, onGameStateChange]);
-
-  // Update move handler when game state changes
+  // --- Poll for state updates when WebSocket is disconnected ---
   useEffect(() => {
-    if (phase === 'playing' && state?.status === 'IN_PROGRESS') {
-      onMoveHandlerChange?.(handlePlayMove);
-    } else {
-      onMoveHandlerChange?.(null);
+    if (!roomId || !roomState) return;
+    
+    // Only poll if WebSocket is not connected
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      return; // WebSocket is connected, no need to poll
     }
-  }, [phase, state?.status, handlePlayMove, onMoveHandlerChange]);
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/rooms/${roomId}`);
+        if (res.ok) {
+          const data = await res.json();
+          // Use functional update to avoid stale closure
+          setRoomState(currentState => {
+            if (!currentState) {
+              const newState: RoomState = {
+                roomId: data.roomId,
+                turn: data.turn,
+                moveNumber: data.moveNumber,
+                board: data.board,
+              };
+              onBoardState(newState.board);
+              return newState;
+            }
+            // Only update if moveNumber changed (opponent made a move)
+            if (data.moveNumber !== currentState.moveNumber) {
+              const newState: RoomState = {
+                roomId: data.roomId,
+                turn: data.turn,
+                moveNumber: data.moveNumber,
+                board: data.board,
+              };
+              console.log('Polled state update:', newState, 'old:', currentState.moveNumber);
+              onBoardState(newState.board);
+              return newState;
+            }
+            return currentState;
+          });
+        }
+      } catch (err) {
+        console.error('Failed to poll state:', err);
+      }
+    }, 3000); // Poll every 3 seconds (less aggressive to avoid race conditions)
+
+    return () => clearInterval(interval);
+  }, [roomId, roomState, onBoardState]);
+
+  // --- Connect WebSocket ---
+  useEffect(() => {
+    if (phase !== 'joining' || !roomId) return;
+
+    // Construct WebSocket URL
+    // In dev, connect directly to backend (8080), in prod use same host as page
+    let wsUrl: string;
+    if (API_BASE_URL.startsWith('/')) {
+      // Development: API_BASE_URL is relative, so connect directly to backend
+      const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      if (isDev) {
+        wsUrl = `ws://localhost:8080/ws/game/${roomId}`;
+      } else {
+        // Production: use same host as page
+        wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/game/${roomId}`;
+      }
+    } else {
+      // API_BASE_URL is absolute, derive WebSocket URL from it
+      wsUrl = `${getWsBaseUrl()}/ws/game/${roomId}`;
+    }
+    console.log('Connecting to WebSocket:', wsUrl, '(API_BASE_URL:', API_BASE_URL, ')');
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      console.log('WebSocket connected to room:', roomId);
+      setPhase('connected');
+      setError(null);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('WebSocket message received:', data.type, data);
+        if (data.type === 'state') {
+          const state: RoomState = {
+            roomId: data.roomId,
+            turn: data.turn,
+            moveNumber: data.moveNumber,
+            board: data.board,
+          };
+          console.log('Setting room state:', state);
+          setRoomState(state);
+          onBoardState(state.board);
+        } else if (data.type === 'error') {
+          setStatusMessage(data.message);
+          // Error messages also include state — update if present
+          if (data.board) {
+            const state: RoomState = {
+              roomId: data.roomId,
+              turn: data.turn,
+              moveNumber: data.moveNumber,
+              board: data.board,
+            };
+            setRoomState(state);
+            onBoardState(state.board);
+          }
+          setTimeout(() => setStatusMessage(null), 3000);
+        }
+      } catch (err) {
+        console.error('Failed to parse WebSocket message:', err, event.data);
+      }
+    };
+
+    ws.onclose = (event) => {
+      console.log('WebSocket closed:', event.code, event.reason, 'wasClean:', event.wasClean);
+      // Try to reconnect after a short delay
+      const currentPhase = phaseRef.current;
+      if (currentPhase === 'connected' || currentPhase === 'joining') {
+        if (!event.wasClean && event.code !== 1000) {
+          // Connection was closed unexpectedly
+          setStatusMessage(`Connection lost (code: ${event.code}). Reconnecting...`);
+          setTimeout(() => setStatusMessage(null), 3000);
+        }
+        reconnectTimeoutRef.current = window.setTimeout(() => {
+          if (wsRef.current === ws && phaseRef.current !== 'error') {
+            console.log('Attempting to reconnect...');
+            setPhase('joining'); // triggers reconnect
+          }
+        }, 2000);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      const errorMsg = `Failed to connect to game server. Make sure the backend is running on port 8080.`;
+      setError(errorMsg);
+      setStatusMessage(errorMsg);
+      // onclose will fire after this
+    };
+
+    return () => {
+      ws.close();
+      wsRef.current = null;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+    };
+  }, [phase, roomId, onBoardState]);
+
+  // --- Move handler (passed up to App for Board clicks) ---
+  const handlePlayMove = useCallback(async (x: number, y: number) => {
+    console.log('handlePlayMove called:', { x, y, roomState, wsReady: wsRef.current?.readyState });
+    
+    if (!roomState) {
+      console.log('No roomState');
+      setStatusMessage('Game not ready yet. Please wait...');
+      setTimeout(() => setStatusMessage(null), 2000);
+      return;
+    }
+    
+    const ws = wsRef.current;
+    
+    // Try WebSocket first
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      console.log('Sending move via WebSocket:', { x, y });
+      ws.send(JSON.stringify({
+        type: 'move',
+        x,
+        y,
+      }));
+      return;
+    }
+    
+    // Fallback: Use REST API if WebSocket not available
+    console.log('WebSocket not available, using REST API');
+    console.log('Sending move:', { x, y, currentTurn: roomState.turn });
+    
+    try {
+      const requestBody = { x, y };
+      console.log('Sending REST request:', { url: `${API_BASE_URL}/rooms/${roomState.roomId}/moves`, body: requestBody });
+      
+      const res = await fetch(`${API_BASE_URL}/rooms/${roomState.roomId}/moves`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(requestBody),
+      });
+      
+      console.log('REST response status:', res.status, res.statusText);
+
+      let data: any;
+      try {
+        data = await res.json();
+      } catch (e) {
+        const text = await res.text();
+        throw new Error(`Failed to parse response (${res.status}): ${text}`);
+      }
+
+      console.log('REST API response:', { status: res.status, data });
+      
+      // Always update state from response (to get latest moveNumber and board)
+      if (data.roomId && data.board) {
+        const newState: RoomState = {
+          roomId: data.roomId,
+          turn: data.turn,
+          moveNumber: data.moveNumber,
+          board: data.board,
+        };
+        setRoomState(newState);
+        onBoardState(newState.board);
+      }
+      
+      if (res.ok && data.success) {
+        setStatusMessage('✓ Move played!');
+        setTimeout(() => setStatusMessage(null), 2000);
+      } else {
+        // Handle error response
+        const errorMsg = data.message || data.error || `Move failed (${res.status})`;
+        console.error('Move failed:', errorMsg, 'Full response:', data);
+        
+        // Show user-friendly error
+        if (errorMsg.includes('Illegal move')) {
+          setStatusMessage('⚠ Illegal move (suicide/ko rule)');
+        } else if (errorMsg.includes('out of bounds')) {
+          setStatusMessage('⚠ Invalid position');
+        } else {
+          setStatusMessage(`⚠ ${errorMsg}`);
+        }
+        setTimeout(() => setStatusMessage(null), 3000);
+      }
+    } catch (err) {
+      console.error('Failed to send move via REST:', err);
+      const errorMsg = err instanceof Error ? err.message : 'Failed to send move. Is backend running?';
+      setStatusMessage(errorMsg);
+      setTimeout(() => setStatusMessage(null), 4000);
+    }
+  }, [roomState]);
+
+  // Update parent's move handler - enable when we have roomState (works with REST fallback even if WebSocket disconnected)
+  useEffect(() => {
+    if (roomState) {
+      onMoveHandler(handlePlayMove);
+    } else {
+      onMoveHandler(null);
+    }
+  }, [roomState, handlePlayMove, onMoveHandler]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      onBoardState(null);
+      onMoveHandler(null);
+    };
+  }, [onBoardState, onMoveHandler]);
+
+  const handlePass = async () => {
+    if (!roomState) return;
+    
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'pass',
+      }));
+      return;
+    }
+    
+    // Fallback: Use REST API
+    try {
+      const res = await fetch(`${API_BASE_URL}/rooms/${roomState.roomId}/pass`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await res.json();
+      
+      if (data.success) {
+        const newState: RoomState = {
+          roomId: data.roomId,
+          turn: data.turn,
+          moveNumber: data.moveNumber,
+          board: data.board,
+        };
+        setRoomState(newState);
+        onBoardState(newState.board);
+        setStatusMessage('Passed! (using REST API)');
+        setTimeout(() => setStatusMessage(null), 2000);
+      } else {
+        setStatusMessage(data.message || 'Pass failed');
+        setTimeout(() => setStatusMessage(null), 3000);
+      }
+    } catch (err) {
+      console.error('Failed to pass via REST:', err);
+      setStatusMessage('Failed to pass. Please check connection.');
+      setTimeout(() => setStatusMessage(null), 3000);
+    }
+  };
 
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
       setStatusMessage('Copied to clipboard!');
       setTimeout(() => setStatusMessage(null), 2000);
-    } catch (err) {
+    } catch {
       setStatusMessage('Failed to copy');
     }
   };
 
-  const boardState = state?.board;
-  const isMyTurn = state?.status === 'IN_PROGRESS' && 
-    ((state.currentTurn === 'BLACK' && color === 'BLACK') ||
-     (state.currentTurn === 'WHITE' && color === 'WHITE'));
+  const handleLeave = () => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    onBoardState(null);
+    onMoveHandler(null);
+    // Reset URL
+    window.history.replaceState({}, '', '/');
+    onBack();
+  };
 
+  // --- Render ---
   return (
     <div className="online-go-container">
-      {phase === 'menu' && (
-        <div className="play-menu">
-          <button className="back-button" onClick={onBack}>
-            ← Back
-          </button>
-          <h2 className="play-menu-title">
-            <span className="menu-icon-large">⚫</span>
-            Play Online
-          </h2>
-          <div className="play-options">
-            <div className="play-option-card" onClick={() => {
-              if (onSwitchToPuzzles) {
-                onSwitchToPuzzles();
-              }
-            }}>
-              <div className="play-option-icon">🧩</div>
-              <div className="play-option-content">
-                <div className="play-option-title">Play Puzzle</div>
-                <div className="play-option-subtitle">Solve Go puzzles and improve your skills</div>
-              </div>
-            </div>
-            <div className="play-option-card" onClick={() => setPhase('create')}>
-              <div className="play-option-icon">⚡</div>
-              <div className="play-option-content">
-                <div className="play-option-title">Create Room</div>
-                <div className="play-option-subtitle">Start a new game and invite a friend</div>
-              </div>
-            </div>
-            <div className="play-option-card" onClick={() => setPhase('join')}>
-              <div className="play-option-icon">🤝</div>
-              <div className="play-option-content">
-                <div className="play-option-title">Join Room</div>
-                <div className="play-option-subtitle">Enter a room code to join a game</div>
-              </div>
-            </div>
+      {/* Loading / Connecting - only show if sidebar isn't visible */}
+      {(phase === 'creating' || (phase === 'joining' && !roomId)) && (
+        <div className="room-loading">
+          <div className="loading-text">
+            {phase === 'creating' ? 'Creating room...' : 'Connecting...'}
           </div>
         </div>
       )}
 
-      {phase === 'create' && (
-        <div className="online-form-container">
-          <button className="back-button" onClick={() => setPhase('menu')}>
-            ← Back
-          </button>
-          <div className="form-card">
-            <h2>Create Room</h2>
-            <p className="form-subtitle">Start a new game as Black</p>
-            <form onSubmit={handleCreate} className="online-form">
-              <label>
-                Your name
-                <input
-                  value={playerName}
-                  onChange={e => setPlayerName(e.target.value)}
-                  placeholder="Enter your name"
-                  autoFocus
-                />
-              </label>
-              <button type="submit" className="btn-primary">Create Game</button>
-            </form>
-          </div>
+      {/* Error */}
+      {phase === 'error' && (
+        <div className="room-error">
+          <p>{error}</p>
+          <button className="btn-primary" onClick={onBack}>Back to Menu</button>
         </div>
       )}
 
-      {phase === 'join' && (
-        <div className="online-form-container">
-          <button className="back-button" onClick={() => setPhase('menu')}>
-            ← Back
-          </button>
-          <div className="form-card">
-            <h2>Join Room</h2>
-            <p className="form-subtitle">Enter a room code to join</p>
-            <form onSubmit={(e) => { e.preventDefault(); }} className="online-form">
-              <label>
-                Room code
-                <input
-                  value={gameId ?? ''}
-                  onChange={e => setGameId(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-                  placeholder="e.g. AB3K9Q"
-                  maxLength={6}
-                  autoFocus
-                />
-              </label>
-              <label>
-                Your name
-                <input
-                  value={playerName}
-                  onChange={e => setPlayerName(e.target.value)}
-                  placeholder="Enter your name"
-                />
-              </label>
-              <div className="color-selection">
-                <div className="color-selection-label">Choose your color:</div>
-                <div className="color-buttons">
-                  <button
-                    type="button"
-                    className="color-button black"
-                    onClick={() => handleJoin(new Event('submit') as any, 'BLACK')}
-                    disabled={!gameId || gameId.length !== 6 || !playerName.trim()}
-                  >
-                    <span className="color-dot black">●</span>
-                    Black
-                  </button>
-                  <button
-                    type="button"
-                    className="color-button white"
-                    onClick={() => handleJoin(new Event('submit') as any, 'WHITE')}
-                    disabled={!gameId || gameId.length !== 6 || !playerName.trim()}
-                  >
-                    <span className="color-dot white">●</span>
-                    White
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {phase === 'rejoin' && rejoinGameState && (
-        <div className="online-form-container">
-          <button className="back-button" onClick={onBack}>
-            ← Back to Menu
-          </button>
-          <div className="form-card">
-            <h2>Join Game</h2>
-            <p className="form-subtitle">Room: {roomCode}</p>
-            {rejoinGameState.status === 'WAITING_FOR_OPPONENT' && (
-              <div className="rejoin-info">
-                <p>This game is waiting for a second player. Choose your color:</p>
-                <form onSubmit={(e) => { e.preventDefault(); }} className="online-form">
-                  <label>
-                    Your name
-                    <input
-                      value={playerName}
-                      onChange={e => setPlayerName(e.target.value)}
-                      placeholder="Enter your name"
-                      autoFocus
-                    />
-                  </label>
-                  <div className="color-selection">
-                    <div className="color-selection-label">Choose your color:</div>
-                    <div className="color-buttons">
-                      <button
-                        type="button"
-                        className="color-button black"
-                        onClick={() => handleRejoin('BLACK')}
-                        disabled={!playerName.trim()}
-                      >
-                        <span className="color-dot black">●</span>
-                        Black
-                      </button>
-                      <button
-                        type="button"
-                        className="color-button white"
-                        onClick={() => handleRejoin('WHITE')}
-                        disabled={!playerName.trim()}
-                      >
-                        <span className="color-dot white">●</span>
-                        White
-                      </button>
-                    </div>
-                  </div>
-                </form>
-              </div>
-            )}
-            {rejoinGameState.status === 'IN_PROGRESS' && (
-              <div className="rejoin-info">
-                <p>This game is in progress.</p>
-                <div className="players-preview">
-                  <div className="player-preview">
-                    <span className="player-color black">●</span>
-                    <span>{rejoinGameState.blackPlayerName || 'Black'}</span>
-                  </div>
-                  <div className="player-preview">
-                    <span className="player-color white">●</span>
-                    <span>{rejoinGameState.whitePlayerName || 'White'}</span>
-                  </div>
-                </div>
-                <form onSubmit={(e) => { e.preventDefault(); handleRejoin(); }} className="online-form">
-                  <label>
-                    Your name
-                    <input
-                      value={playerName}
-                      onChange={e => setPlayerName(e.target.value)}
-                      placeholder="Enter your name to rejoin"
-                      autoFocus
-                    />
-                  </label>
-                  <button type="submit" className="btn-primary">Rejoin Game</button>
-                </form>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {phase === 'playing' && boardState && (
+      {/* Game sidebar - show when we have a roomId */}
+      {roomId && (
         <div className="game-info-sidebar">
           <div className="game-info-card">
-              <div className="player-section">
-                <label className="player-name-label">
-                  Your name
-                  <input
-                    className="player-name-input"
-                    value={playerName}
-                    onChange={e => {
-                      const value = e.target.value;
-                      setPlayerName(value);
-                      setState(prev =>
-                        prev
-                          ? {
-                              ...prev,
-                              blackPlayerName:
-                                color === 'BLACK' ? value : prev.blackPlayerName,
-                              whitePlayerName:
-                                color === 'WHITE' ? value : prev.whitePlayerName
-                            }
-                          : prev
-                      );
-                    }}
-                    placeholder="Your name"
-                  />
-                </label>
-              </div>
+            {/* Back button */}
+            <button className="back-button" onClick={handleLeave}>
+              ← Back
+            </button>
 
-              {roomCode && (
-                <div className="room-code-section">
-                  <div className="room-code-label">Room Code</div>
-                  <div className="room-code-container">
-                    <span className="room-code-value">{roomCode}</span>
-                    <button
-                      type="button"
-                      className="btn-copy"
-                      onClick={() => copyToClipboard(roomCode)}
-                      title="Copy room code"
-                    >
-                      📋
-                    </button>
-                  </div>
+            {/* Turn indicator */}
+            {roomState && (
+              <div className="turn-section">
+                <div className="turn-label">Current turn</div>
+                <div className={`turn-display ${roomState.turn.toLowerCase()}`}>
+                  <span className={`turn-stone ${roomState.turn.toLowerCase()}`}>●</span>
+                  <span className="turn-text">{roomState.turn === 'BLACK' ? 'Black' : 'White'}</span>
                 </div>
-              )}
-
-              {shareUrl && (
-                <div className="share-section">
-                  <div className="share-label">Share Link</div>
-                  <div className="share-url-container">
-                    <input
-                      type="text"
-                      readOnly
-                      value={shareUrl}
-                      className="share-url-input"
-                    />
-                    <button
-                      type="button"
-                      className="btn-copy"
-                      onClick={() => copyToClipboard(shareUrl)}
-                      title="Copy link"
-                    >
-                      📋
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="game-status-section">
-                <div className="status-row">
-                  <span className="status-label">You are:</span>
-                  <span className={`player-badge ${color?.toLowerCase()}`}>
-                    {color}
-                  </span>
-                </div>
-                <div className="status-row">
-                  <span className="status-label">Status:</span>
-                  <span className={`turn-indicator ${isMyTurn ? 'your-turn' : 'waiting'}`}>
-                    {state?.status === 'WAITING_FOR_OPPONENT'
-                      ? 'Waiting for opponent...'
-                      : isMyTurn
-                      ? 'Your turn!'
-                      : "Opponent's turn"}
-                  </span>
+                <div className="move-counter">Move #{roomState.moveNumber + 1}</div>
+                <div style={{ fontSize: '0.75rem', color: wsRef.current?.readyState === WebSocket.OPEN ? '#27ae60' : '#e67e22', marginTop: '0.5rem' }}>
+                  {wsRef.current?.readyState === WebSocket.OPEN ? '● Connected' : 
+                   wsRef.current?.readyState === WebSocket.CONNECTING ? '● Connecting...' : 
+                   '● Disconnected'}
                 </div>
               </div>
-
-              <div className="players-section">
-                <div className="player-info">
-                  <span className="player-color black">●</span>
-                  <span className="player-name">{state?.blackPlayerName ?? '—'}</span>
-                </div>
-                <div className="player-info">
-                  <span className="player-color white">●</span>
-                  <span className="player-name">{state?.whitePlayerName ?? '—'}</span>
+            )}
+            {!roomState && phase === 'joining' && (
+              <div className="turn-section">
+                <div className="turn-label">Connecting to game...</div>
+                <div className="loading-text" style={{ fontSize: '0.85rem', color: '#999', marginTop: '0.5rem' }}>
+                  Waiting for connection...
                 </div>
               </div>
+            )}
 
-              {state?.status === 'IN_PROGRESS' && (
-                <div className="swap-colors-section">
+            {/* Room code + share */}
+            <div className="room-code-section">
+              <div className="room-code-label">Room Code</div>
+              <div className="room-code-container">
+                <span className="room-code-value">{roomId}</span>
+                <button
+                  type="button"
+                  className="btn-copy"
+                  onClick={() => roomId && copyToClipboard(roomId)}
+                  title="Copy room code"
+                >
+                  📋
+                </button>
+              </div>
+            </div>
+
+            {shareUrl && (
+              <div className="share-section">
+                <div className="share-label">Share Link</div>
+                <div className="share-url-container">
+                  <input type="text" readOnly value={shareUrl} className="share-url-input" />
                   <button
                     type="button"
-                    className="btn-swap-colors"
-                    onClick={handleSwapColors}
-                    title="Swap colors with your opponent"
+                    className="btn-copy"
+                    onClick={() => copyToClipboard(shareUrl)}
+                    title="Copy link"
                   >
-                    🔄 Swap Colors
+                    📋
                   </button>
                 </div>
-              )}
-            </div>
-          </div>
-      )}
+              </div>
+            )}
 
-      {autoJoinInProgress && (
-        <div className="loading-overlay">
-          <div className="loading-spinner">Joining game...</div>
+            {/* Pass button */}
+            {roomState && (
+              <div className="pass-section">
+                <button 
+                  className="btn-pass" 
+                  onClick={handlePass}
+                >
+                  Pass Turn
+                </button>
+                {wsRef.current?.readyState !== WebSocket.OPEN && (
+                  <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.5rem', textAlign: 'center' }}>
+                    Using REST API (WebSocket disconnected)
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Connection error display */}
+            {error && (
+              <div className="room-error" style={{ marginTop: '1rem', padding: '1rem', background: '#2c2c2c', borderRadius: '8px', border: '1px solid #e67e22' }}>
+                <div style={{ color: '#e67e22', marginBottom: '0.5rem', fontWeight: '600' }}>Connection Error</div>
+                <div style={{ fontSize: '0.85rem', color: '#ccc', marginBottom: '0.75rem' }}>{error}</div>
+                <button 
+                  className="btn-primary" 
+                  onClick={() => {
+                    setError(null);
+                    setPhase('joining');
+                  }}
+                  style={{ width: '100%' }}
+                >
+                  Retry Connection
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
+      {/* Status toast */}
       {statusMessage && (
         <div className={`status-toast ${statusMessage.includes('Copied') ? 'success' : ''}`}>
           {statusMessage}
@@ -735,5 +570,4 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId, initialPhase, onBack,
       )}
     </div>
   );
-}
-
+};
