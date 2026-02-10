@@ -40,6 +40,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
   const [roomState, setRoomState] = useState<RoomState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [ruleTipIndex, setRuleTipIndex] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
@@ -50,6 +51,25 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     if (!roomId) return null;
     return `${window.location.origin}/r/${roomId}`;
   }, [roomId]);
+
+  const ruleTips = useMemo(() => ([
+    {
+      title: 'Ko rule',
+      text: 'You cannot immediately recapture to recreate the exact previous board position. Play elsewhere first.',
+    },
+    {
+      title: 'Komi',
+      text: 'White gets extra points (komi) to balance Black moving first. Typical value is around 6.5 to 7.5.',
+    },
+    {
+      title: 'Passing',
+      text: 'Pass when no profitable move remains. The game usually ends after two consecutive passes.',
+    },
+    {
+      title: 'Capturing',
+      text: 'A group with no liberties is captured and removed from the board.',
+    },
+  ]), []);
 
   // --- Create room ---
   useEffect(() => {
@@ -373,6 +393,14 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     };
   }, [onBoardState, onMoveHandler]);
 
+  // Rotate Go rule tips for lightweight in-app guidance.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setRuleTipIndex((prev) => (prev + 1) % ruleTips.length);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [ruleTips.length]);
+
   const handlePass = async () => {
     if (!roomState) return;
     
@@ -402,7 +430,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
         };
         setRoomState(newState);
         onBoardState(newState.board);
-        setStatusMessage('Passed! (using REST API)');
+        setStatusMessage('Turn passed.');
         setTimeout(() => setStatusMessage(null), 2000);
       } else {
         setStatusMessage(data.message || 'Pass failed');
@@ -475,11 +503,6 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
                   <span className="turn-text">{roomState.turn === 'BLACK' ? 'Black' : 'White'}</span>
                 </div>
                 <div className="move-counter">Move #{roomState.moveNumber + 1}</div>
-                <div style={{ fontSize: '0.75rem', color: wsRef.current?.readyState === WebSocket.OPEN ? '#27ae60' : '#e67e22', marginTop: '0.5rem' }}>
-                  {wsRef.current?.readyState === WebSocket.OPEN ? '● Connected' : 
-                   wsRef.current?.readyState === WebSocket.CONNECTING ? '● Connecting...' : 
-                   '● Disconnected'}
-                </div>
               </div>
             )}
             {!roomState && phase === 'joining' && (
@@ -493,34 +516,35 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
 
             {/* Room code + share */}
             <div className="room-code-section">
-              <div className="room-code-label">Room Code</div>
-              <div className="room-code-container">
-                <span className="room-code-value">{roomId}</span>
+              <div className="room-code-header">
+                <div className="room-code-label">Room code</div>
                 <button
                   type="button"
-                  className="btn-copy"
+                  className="btn-copy-text"
                   onClick={() => roomId && copyToClipboard(roomId)}
                   title="Copy room code"
                 >
-                  📋
+                  Copy code
                 </button>
               </div>
+              <div className="invite-value invite-value-code">{roomId}</div>
+              <div className="room-code-hint">Share this code or link with a friend to join instantly.</div>
             </div>
 
             {shareUrl && (
               <div className="share-section">
-                <div className="share-label">Share Link</div>
-                <div className="share-url-container">
-                  <input type="text" readOnly value={shareUrl} className="share-url-input" />
+                <div className="share-header">
+                  <div className="share-label">Invite link</div>
                   <button
                     type="button"
-                    className="btn-copy"
+                    className="btn-copy-text"
                     onClick={() => copyToClipboard(shareUrl)}
                     title="Copy link"
                   >
-                    📋
+                    Copy link
                   </button>
                 </div>
+                <div className="invite-value invite-value-link">{shareUrl}</div>
               </div>
             )}
 
@@ -533,31 +557,14 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
                 >
                   Pass Turn
                 </button>
-                {wsRef.current?.readyState !== WebSocket.OPEN && (
-                  <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.5rem', textAlign: 'center' }}>
-                    Using REST API (WebSocket disconnected)
-                  </div>
-                )}
               </div>
             )}
-            
-            {/* Connection error display */}
-            {error && (
-              <div className="room-error" style={{ marginTop: '1rem', padding: '1rem', background: '#2c2c2c', borderRadius: '8px', border: '1px solid #e67e22' }}>
-                <div style={{ color: '#e67e22', marginBottom: '0.5rem', fontWeight: '600' }}>Connection Error</div>
-                <div style={{ fontSize: '0.85rem', color: '#ccc', marginBottom: '0.75rem' }}>{error}</div>
-                <button 
-                  className="btn-primary" 
-                  onClick={() => {
-                    setError(null);
-                    setPhase('joining');
-                  }}
-                  style={{ width: '100%' }}
-                >
-                  Retry Connection
-                </button>
-              </div>
-            )}
+
+            <div className="quick-rules">
+              <div className="quick-rules-title">Game essentials</div>
+              <div className="quick-rule-topic">{ruleTips[ruleTipIndex].title}</div>
+              <div className="quick-rule-item">{ruleTips[ruleTipIndex].text}</div>
+            </div>
           </div>
         </div>
       )}

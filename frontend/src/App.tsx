@@ -200,19 +200,9 @@ export const App: React.FC = () => {
       <main className="app-main chess-main">
         {/* Left side: Board */}
         <div className="board-container-left">
-          {isOnlineRoom && onlineBoardState && (
-            <div className="player-info-top">
-              <div className="player-label">Opponent</div>
-            </div>
-          )}
           <div className="board-wrapper">
             <Board board={displayBoardState} onPlayMove={handleBoardMove} />
           </div>
-          {isOnlineRoom && onlineBoardState && (
-            <div className="player-info-bottom">
-              <div className="player-label">You</div>
-            </div>
-          )}
         </div>
 
         {/* Right side: Menu/Options */}
