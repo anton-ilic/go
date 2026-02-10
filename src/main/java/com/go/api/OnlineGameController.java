@@ -75,14 +75,41 @@ public class OnlineGameController {
                 : "Player 2";
 
         try {
-            UUID playerId = onlineGameService.joinGame(session.getGameId(), playerName);
+            UUID playerId;
+            String assignedColor;
+            OnlineGameSession.Turn preferredColor = null;
+            if (request.preferredColor() != null && !request.preferredColor().isBlank()) {
+                try {
+                    preferredColor = OnlineGameSession.Turn.valueOf(request.preferredColor().toUpperCase());
+                } catch (IllegalArgumentException ex) {
+                    // Invalid color, ignore and use default
+                }
+            }
+
+            if (preferredColor != null) {
+                playerId = onlineGameService.joinGameWithColor(session.getGameId(), playerName, preferredColor);
+                assignedColor = preferredColor.name();
+            } else {
+                // Default: join as white
+                playerId = onlineGameService.joinGame(session.getGameId(), playerName);
+                assignedColor = "WHITE";
+            }
+
             OnlineGameSession updatedSession = onlineGameService.getGame(session.getGameId());
             OnlineGameStateDto stateDto = toStateDto(updatedSession);
+            
+            // Determine actual assigned color based on playerId
+            if (playerId.equals(updatedSession.getBlackPlayerId())) {
+                assignedColor = "BLACK";
+            } else {
+                assignedColor = "WHITE";
+            }
+
             return ResponseEntity.ok(new JoinOnlineGameResponse(
                     updatedSession.getGameId().toString(),
                     updatedSession.getRoomCode(),
                     playerId.toString(),
-                    "WHITE",
+                    assignedColor,
                     stateDto
             ));
         } catch (IllegalArgumentException ex) {
@@ -92,17 +119,9 @@ public class OnlineGameController {
         }
     }
 
-    @GetMapping("/{gameId}")
-    public ResponseEntity<OnlineGameStateDto> getState(@PathVariable String gameId,
-                                                       @RequestParam("playerId") String playerId) {
+    @PostMapping("/{gameId}/swap-colors")
+    public ResponseEntity<OnlineGameStateDto> swapColors(@PathVariable String gameId) {
         OnlineGameSession session;
-        UUID playerUuid;
-        try {
-            playerUuid = UUID.fromString(playerId);
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
-        }
-
         try {
             // Try as UUID first, then as room code
             try {
@@ -116,7 +135,50 @@ public class OnlineGameController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
 
-        // For now we only check that the playerId matches one of the players if game is not waiting
+        try {
+            onlineGameService.swapColors(session.getGameId());
+            OnlineGameSession updatedSession = onlineGameService.getGame(session.getGameId());
+            return ResponseEntity.ok(toStateDto(updatedSession));
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+    }
+
+    @GetMapping("/{gameId}")
+    public ResponseEntity<OnlineGameStateDto> getState(@PathVariable String gameId,
+                                                       @RequestParam(value = "playerId", required = false) String playerId) {
+        OnlineGameSession session;
+        try {
+            // Try as UUID first, then as room code
+            try {
+                UUID gameUuid = UUID.fromString(gameId);
+                session = onlineGameService.getGame(gameUuid);
+            } catch (IllegalArgumentException ex) {
+                // Not a UUID, try as room code
+                session = onlineGameService.getGameByRoomCode(gameId);
+            }
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+
+        // If game is waiting, anyone can view the state
+        if (session.getStatus() == OnlineGameSession.GameStatus.WAITING_FOR_OPPONENT) {
+            return ResponseEntity.ok(toStateDto(session));
+        }
+
+        // If game is in progress, require valid playerId
+        if (playerId == null || playerId.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+
+        UUID playerUuid;
+        try {
+            playerUuid = UUID.fromString(playerId);
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+
+        // Check that the playerId matches one of the players
         if (session.isFull()
                 && !(playerUuid.equals(session.getBlackPlayerId())
                 || playerUuid.equals(session.getWhitePlayerId()))) {

@@ -75,6 +75,25 @@ public class OnlineGameService {
         return session.joinAsWhite(playerName);
     }
 
+    /**
+     * Join a game with a preferred color. If the color is already taken, swaps colors.
+     */
+    public UUID joinGameWithColor(UUID gameId, String playerName, OnlineGameSession.Turn preferredColor) {
+        OnlineGameSession session = getGame(gameId);
+        if (session.isFull()) {
+            throw new IllegalStateException("Game already has two players");
+        }
+        return session.joinAsColor(playerName, preferredColor);
+    }
+
+    /**
+     * Swap colors between the two players in a game.
+     */
+    public void swapColors(UUID gameId) {
+        OnlineGameSession session = getGame(gameId);
+        session.swapColors();
+    }
+
     public OnlineGameSession.GameStatus getStatus(UUID gameId) {
         return getGame(gameId).getStatus();
     }

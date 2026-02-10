@@ -97,6 +97,48 @@ public class OnlineGameSession {
         return whitePlayerId;
     }
 
+    /**
+     * Join as a specific color. If that color is taken, throws IllegalStateException.
+     * If color is null, auto-assigns to white (second player).
+     */
+    public UUID joinAsColor(String playerName, Turn preferredColor) {
+        if (isFull()) {
+            throw new IllegalStateException("Game already has two players");
+        }
+        if (preferredColor == Turn.BLACK) {
+            // Swap: current black becomes white, new player becomes black
+            UUID tempId = this.blackPlayerId;
+            String tempName = this.blackPlayerName;
+            this.blackPlayerId = UUID.randomUUID();
+            this.blackPlayerName = playerName;
+            this.whitePlayerId = tempId;
+            this.whitePlayerName = tempName;
+            this.status = GameStatus.IN_PROGRESS;
+            return blackPlayerId;
+        } else {
+            // Join as white (default)
+            return joinAsWhite(playerName);
+        }
+    }
+
+    /**
+     * Swap colors between the two players.
+     */
+    public void swapColors() {
+        if (!isFull()) {
+            throw new IllegalStateException("Cannot swap colors: game is not full");
+        }
+        // Swap player IDs and names
+        UUID tempId = this.blackPlayerId;
+        String tempName = this.blackPlayerName;
+        this.blackPlayerId = this.whitePlayerId;
+        this.blackPlayerName = this.whitePlayerName;
+        this.whitePlayerId = tempId;
+        this.whitePlayerName = tempName;
+        // Also swap the current turn
+        this.currentTurn = (this.currentTurn == Turn.BLACK) ? Turn.WHITE : Turn.BLACK;
+    }
+
     public boolean isPlayersTurn(UUID playerId) {
         if (status != GameStatus.IN_PROGRESS) {
             return false;
