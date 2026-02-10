@@ -36,16 +36,20 @@ type OnlineMoveResponse = {
 
 type Props = {
   initialGameId?: string | null;
+  initialPhase?: 'create' | 'join' | 'menu';
   onBack?: () => void;
   onSwitchToPuzzles?: () => void;
   onGameStateChange?: (state: OnlineGameState | null) => void;
   onMoveHandlerChange?: (handler: ((x: number, y: number) => void) | null) => void;
 };
 
-export const OnlineGo: React.FC<Props> = ({ initialGameId, onBack, onSwitchToPuzzles, onGameStateChange, onMoveHandlerChange }) => {
-  const [phase, setPhase] = useState<'menu' | 'create' | 'join' | 'rejoin' | 'playing'>(
-    initialGameId ? 'rejoin' : 'menu'
-  );
+export const OnlineGo: React.FC<Props> = ({ initialGameId, initialPhase, onBack, onSwitchToPuzzles, onGameStateChange, onMoveHandlerChange }) => {
+  // Determine initial phase
+  const [phase, setPhase] = useState<'menu' | 'create' | 'join' | 'rejoin' | 'playing'>(() => {
+    if (initialGameId) return 'rejoin';
+    if (initialPhase) return initialPhase;
+    return 'menu';
+  });
   const [playerName, setPlayerName] = useState('');
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [gameId, setGameId] = useState<string | null>(initialGameId ?? null);
@@ -62,7 +66,7 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId, onBack, onSwitchToPuz
     return `${baseUrl}/join/${roomCode}`;
   }, [roomCode]);
 
-  // If we land on a shared link with room code, fetch game state for rejoin
+  // If we land on a shared link with room code, fetch game state for join
   useEffect(() => {
     if (!initialGameId || rejoinGameState || autoJoinInProgress || phase !== 'rejoin') {
       return;
@@ -90,12 +94,13 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId, onBack, onSwitchToPuz
             setState(data);
             setPhase('playing');
             setAutoJoinInProgress(false);
+            onGameStateChange?.(data);
             return;
           }
         }
 
-        // If no stored info or stored playerId doesn't work, fetch game state
-        const res = await fetch(`${API_BASE_URL}/online-games/${roomCodeToJoin}?playerId=temp`);
+        // If no stored info or stored playerId doesn't work, fetch game state (no playerId needed for waiting games)
+        const res = await fetch(`${API_BASE_URL}/online-games/${roomCodeToJoin}`);
         if (res.ok) {
           const data: OnlineGameState = await res.json();
           setRejoinGameState(data);
@@ -112,7 +117,7 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId, onBack, onSwitchToPuz
         setAutoJoinInProgress(false);
       }
     })();
-  }, [initialGameId, rejoinGameState, autoJoinInProgress, phase]);
+  }, [initialGameId, rejoinGameState, autoJoinInProgress, phase, onGameStateChange]);
 
   // Polling
   useEffect(() => {
@@ -181,7 +186,7 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId, onBack, onSwitchToPuz
     }
   };
 
-  const handleJoin = async (e: React.FormEvent) => {
+  const handleJoin = async (e: React.FormEvent, selectedColor?: 'BLACK' | 'WHITE') => {
     e.preventDefault();
     if (!gameId || gameId.length !== 6) {
       setStatusMessage('Please enter a valid 6-character room code');
@@ -196,7 +201,10 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId, onBack, onSwitchToPuz
       const res = await fetch(`${API_BASE_URL}/online-games/${gameId}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerName: playerName.trim() })
+        body: JSON.stringify({ 
+          playerName: playerName.trim(),
+          preferredColor: selectedColor || null
+        })
       });
       if (!res.ok) {
         if (res.status === 409) {
@@ -239,12 +247,15 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId, onBack, onSwitchToPuz
     }
     setStatusMessage(null);
     try {
-      // If game is waiting, join as second player
+      // If game is waiting, join as second player with color selection
       if (rejoinGameState?.status === 'WAITING_FOR_OPPONENT') {
         const res = await fetch(`${API_BASE_URL}/online-games/${gameId}/join`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ playerName: playerName.trim() })
+          body: JSON.stringify({ 
+            playerName: playerName.trim(),
+            preferredColor: selectedColor || null
+          })
         });
         if (!res.ok) {
           if (res.status === 409) {
@@ -294,24 +305,77 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId, onBack, onSwitchToPuz
     }
   };
 
+  const handleSwapColors = async () => {
+    if (!gameId || !playerId) return;
+    setStatusMessage(null);
+    try {
+      const identifier = roomCode || gameId;
+      const res = await fetch(`${API_BASE_URL}/online-games/${identifier}/swap-colors`, {
+        method: 'POST'
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to swap colors: ${res.status}`);
+      }
+      const data: OnlineGameState = await res.json();
+      setState(data);
+      onGameStateChange?.(data);
+      
+      // Update our color
+      const newColor = color === 'BLACK' ? 'WHITE' : 'BLACK';
+      setColor(newColor);
+      
+      // Update stored info
+      if (roomCode) {
+        const storedInfo = localStorage.getItem(`game_${roomCode}`);
+        if (storedInfo) {
+          const info = JSON.parse(storedInfo);
+          info.color = newColor;
+          localStorage.setItem(`game_${roomCode}`, JSON.stringify(info));
+        }
+      }
+      
+      setStatusMessage('Colors swapped!');
+      setTimeout(() => setStatusMessage(null), 2000);
+    } catch (err) {
+      setStatusMessage((err as Error).message);
+    }
+  };
+
   const handlePlayMove = useCallback(async (x: number, y: number) => {
-    if (!gameId || !playerId || !state) return;
-    if (state.status !== 'IN_PROGRESS') return;
+    if (!gameId || !playerId || !state) {
+      setStatusMessage('Not ready to play. Please wait...');
+      return;
+    }
+    if (state.status !== 'IN_PROGRESS') {
+      setStatusMessage('Game is not in progress');
+      return;
+    }
     if ((state.currentTurn === 'BLACK' && color !== 'BLACK') ||
         (state.currentTurn === 'WHITE' && color !== 'WHITE')) {
+      setStatusMessage("It's not your turn");
       return;
     }
     setStatusMessage(null);
     try {
       // Use room code if available, otherwise fall back to gameId (UUID)
-      const identifier = roomCode || gameId;
+      const identifier = (roomCode || gameId).toUpperCase();
       const res = await fetch(`${API_BASE_URL}/online-games/${identifier}/moves`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ playerId, x, y })
       });
       if (!res.ok) {
-        throw new Error(`Failed to play move: ${res.status}`);
+        const errorText = await res.text();
+        let errorMessage = `Failed to play move: ${res.status}`;
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          }
+        } catch {
+          // Use default error message
+        }
+        throw new Error(errorMessage);
       }
       const data: OnlineMoveResponse = await res.json();
       setState(data.state);
@@ -350,9 +414,12 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId, onBack, onSwitchToPuz
     <div className="online-go-container">
       {phase === 'menu' && (
         <div className="play-menu">
+          <button className="back-button" onClick={onBack}>
+            ← Back
+          </button>
           <h2 className="play-menu-title">
             <span className="menu-icon-large">⚫</span>
-            Play
+            Play Online
           </h2>
           <div className="play-options">
             <div className="play-option-card" onClick={() => {
@@ -416,7 +483,7 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId, onBack, onSwitchToPuz
           <div className="form-card">
             <h2>Join Room</h2>
             <p className="form-subtitle">Enter a room code to join</p>
-            <form onSubmit={handleJoin} className="online-form">
+            <form onSubmit={(e) => { e.preventDefault(); }} className="online-form">
               <label>
                 Room code
                 <input
@@ -435,9 +502,29 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId, onBack, onSwitchToPuz
                   placeholder="Enter your name"
                 />
               </label>
-              <button type="submit" disabled={!gameId || gameId.length !== 6} className="btn-primary">
-                Join Game
-              </button>
+              <div className="color-selection">
+                <div className="color-selection-label">Choose your color:</div>
+                <div className="color-buttons">
+                  <button
+                    type="button"
+                    className="color-button black"
+                    onClick={() => handleJoin(new Event('submit') as any, 'BLACK')}
+                    disabled={!gameId || gameId.length !== 6 || !playerName.trim()}
+                  >
+                    <span className="color-dot black">●</span>
+                    Black
+                  </button>
+                  <button
+                    type="button"
+                    className="color-button white"
+                    onClick={() => handleJoin(new Event('submit') as any, 'WHITE')}
+                    disabled={!gameId || gameId.length !== 6 || !playerName.trim()}
+                  >
+                    <span className="color-dot white">●</span>
+                    White
+                  </button>
+                </div>
+              </div>
             </form>
           </div>
         </div>
@@ -449,12 +536,12 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId, onBack, onSwitchToPuz
             ← Back to Menu
           </button>
           <div className="form-card">
-            <h2>Rejoin Game</h2>
+            <h2>Join Game</h2>
             <p className="form-subtitle">Room: {roomCode}</p>
             {rejoinGameState.status === 'WAITING_FOR_OPPONENT' && (
               <div className="rejoin-info">
-                <p>This game is waiting for a second player.</p>
-                <form onSubmit={(e) => { e.preventDefault(); handleRejoin(); }} className="online-form">
+                <p>This game is waiting for a second player. Choose your color:</p>
+                <form onSubmit={(e) => { e.preventDefault(); }} className="online-form">
                   <label>
                     Your name
                     <input
@@ -464,7 +551,29 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId, onBack, onSwitchToPuz
                       autoFocus
                     />
                   </label>
-                  <button type="submit" className="btn-primary">Join as White</button>
+                  <div className="color-selection">
+                    <div className="color-selection-label">Choose your color:</div>
+                    <div className="color-buttons">
+                      <button
+                        type="button"
+                        className="color-button black"
+                        onClick={() => handleRejoin('BLACK')}
+                        disabled={!playerName.trim()}
+                      >
+                        <span className="color-dot black">●</span>
+                        Black
+                      </button>
+                      <button
+                        type="button"
+                        className="color-button white"
+                        onClick={() => handleRejoin('WHITE')}
+                        disabled={!playerName.trim()}
+                      >
+                        <span className="color-dot white">●</span>
+                        White
+                      </button>
+                    </div>
+                  </div>
                 </form>
               </div>
             )}
@@ -596,6 +705,19 @@ export const OnlineGo: React.FC<Props> = ({ initialGameId, onBack, onSwitchToPuz
                   <span className="player-name">{state?.whitePlayerName ?? '—'}</span>
                 </div>
               </div>
+
+              {state?.status === 'IN_PROGRESS' && (
+                <div className="swap-colors-section">
+                  <button
+                    type="button"
+                    className="btn-swap-colors"
+                    onClick={handleSwapColors}
+                    title="Swap colors with your opponent"
+                  >
+                    🔄 Swap Colors
+                  </button>
+                </div>
+              )}
             </div>
           </div>
       )}

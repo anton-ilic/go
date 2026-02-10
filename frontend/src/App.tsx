@@ -62,6 +62,9 @@ export const App: React.FC = () => {
   const [mode, setMode] = useState<'puzzles' | 'online'>(
     initialOnlineGameId ? 'online' : 'puzzles'
   );
+  const [showMainMenu, setShowMainMenu] = useState(!initialOnlineGameId);
+  const [showOnlineSubmenu, setShowOnlineSubmenu] = useState(false);
+  const [onlineInitialPhase, setOnlineInitialPhase] = useState<'create' | 'join' | undefined>(undefined);
 
   useEffect(() => {
     const loadPuzzles = async () => {
@@ -196,7 +199,8 @@ export const App: React.FC = () => {
 
         {/* Right side: Menu/Options */}
         <div className="menu-container-right">
-          {mode === 'puzzles' && !currentGame && (
+          {/* Main Menu */}
+          {showMainMenu && !currentGame && !onlineGameState && (
             <div className="play-menu">
               <h2 className="play-menu-title">
                 <span className="menu-icon-large">⚫</span>
@@ -204,6 +208,7 @@ export const App: React.FC = () => {
               </h2>
               <div className="play-options">
                 <div className="play-option-card" onClick={() => {
+                  setShowMainMenu(false);
                   setMode('puzzles');
                 }}>
                   <div className="play-option-icon">🧩</div>
@@ -213,21 +218,14 @@ export const App: React.FC = () => {
                   </div>
                 </div>
                 <div className="play-option-card" onClick={() => {
+                  setShowMainMenu(false);
+                  setShowOnlineSubmenu(true);
                   setMode('online');
                 }}>
                   <div className="play-option-icon">⚡</div>
                   <div className="play-option-content">
-                    <div className="play-option-title">Create Room</div>
-                    <div className="play-option-subtitle">Start a new game and invite a friend</div>
-                  </div>
-                </div>
-                <div className="play-option-card" onClick={() => {
-                  setMode('online');
-                }}>
-                  <div className="play-option-icon">🤝</div>
-                  <div className="play-option-content">
-                    <div className="play-option-title">Join Room</div>
-                    <div className="play-option-subtitle">Enter a room code to join a game</div>
+                    <div className="play-option-title">Play Online</div>
+                    <div className="play-option-subtitle">Create or join a multiplayer game</div>
                   </div>
                 </div>
               </div>
@@ -254,12 +252,77 @@ export const App: React.FC = () => {
             </div>
           )}
 
+          {/* Online Submenu */}
+          {showOnlineSubmenu && !onlineGameState && (
+            <div className="play-menu">
+              <button className="back-button" onClick={() => {
+                setShowOnlineSubmenu(false);
+                setShowMainMenu(true);
+                setMode('puzzles');
+              }}>
+                ← Back
+              </button>
+              <h2 className="play-menu-title">
+                <span className="menu-icon-large">⚡</span>
+                Play Online
+              </h2>
+              <div className="play-options">
+                <div className="play-option-card" onClick={() => {
+                  setShowOnlineSubmenu(false);
+                  setOnlineInitialPhase('create');
+                  setMode('online');
+                }}>
+                  <div className="play-option-icon">⚡</div>
+                  <div className="play-option-content">
+                    <div className="play-option-title">Create Room</div>
+                    <div className="play-option-subtitle">Start a new game and invite a friend</div>
+                  </div>
+                </div>
+                <div className="play-option-card" onClick={() => {
+                  setShowOnlineSubmenu(false);
+                  setOnlineInitialPhase('join');
+                  setMode('online');
+                }}>
+                  <div className="play-option-icon">🤝</div>
+                  <div className="play-option-content">
+                    <div className="play-option-title">Join Room</div>
+                    <div className="play-option-subtitle">Enter a room code to join a game</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Puzzle List */}
+          {mode === 'puzzles' && !showMainMenu && !currentGame && (
+            <div className="puzzle-sidebar">
+              <button 
+                className="back-button"
+                onClick={() => {
+                  setShowMainMenu(true);
+                  setMode('puzzles');
+                }}
+              >
+                ← Back
+              </button>
+              <h2>Puzzles</h2>
+              <PuzzleList
+                puzzles={puzzles}
+                loading={loadingPuzzles}
+                onSelectPuzzle={handleSelectPuzzle}
+              />
+              {statusMessage && <div className="status-message">{statusMessage}</div>}
+            </div>
+          )}
+
+          {/* Puzzle Game Active */}
           {mode === 'puzzles' && currentGame && (
             <div className="puzzle-sidebar">
               <button 
                 className="back-button"
                 onClick={() => {
                   setCurrentGame(null);
+                  setShowMainMenu(false);
                   setMode('puzzles');
                 }}
               >
@@ -278,21 +341,34 @@ export const App: React.FC = () => {
             </div>
           )}
 
-          {mode === 'online' && (
+          {/* Online Game */}
+          {mode === 'online' && !showOnlineSubmenu && (
             <OnlineGo 
               initialGameId={initialOnlineGameId}
+              initialPhase={onlineInitialPhase}
               onBack={() => {
+                setShowMainMenu(true);
+                setShowOnlineSubmenu(false);
+                setOnlineInitialPhase(undefined);
                 setMode('puzzles');
                 setCurrentGame(null);
                 setOnlineGameState(null);
                 setOnlineMoveHandler(null);
               }}
               onSwitchToPuzzles={() => {
+                setShowMainMenu(true);
+                setShowOnlineSubmenu(false);
                 setMode('puzzles');
                 setOnlineGameState(null);
                 setOnlineMoveHandler(null);
               }}
-              onGameStateChange={setOnlineGameState}
+              onGameStateChange={(state) => {
+                setOnlineGameState(state);
+                if (state) {
+                  setShowMainMenu(false);
+                  setShowOnlineSubmenu(false);
+                }
+              }}
               onMoveHandlerChange={setOnlineMoveHandler}
             />
           )}

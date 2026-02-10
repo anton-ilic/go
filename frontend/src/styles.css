@@ -708,6 +708,106 @@ body {
   border-color: #777;
 }
 
+/* Color selection for joining */
+.color-selection {
+  margin-top: 1rem;
+}
+
+.color-selection-label {
+  color: #fff;
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+  font-weight: 500;
+}
+
+.color-buttons {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.color-button {
+  flex: 1;
+  padding: 0.875rem 1rem;
+  border: 2px solid #555;
+  border-radius: 8px;
+  background: #2c2c2c;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+}
+
+.color-button:hover:not(:disabled) {
+  background: #333;
+  border-color: #777;
+  transform: translateY(-1px);
+}
+
+.color-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.color-button.black {
+  border-color: #444;
+}
+
+.color-button.black:hover:not(:disabled) {
+  border-color: #666;
+  background: #1a1a1a;
+}
+
+.color-button.white {
+  border-color: #666;
+}
+
+.color-button.white:hover:not(:disabled) {
+  border-color: #888;
+  background: #2a2a2a;
+}
+
+.color-dot {
+  font-size: 1.2rem;
+}
+
+.color-dot.black {
+  color: #333;
+  text-shadow: 0 0 2px #999;
+}
+
+.color-dot.white {
+  color: #eee;
+}
+
+/* Swap colors button */
+.swap-colors-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #444;
+}
+
+.btn-swap-colors {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: #4a90e2;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-swap-colors:hover {
+  background: #5aa0f2;
+}
+
 
 /* Play Menu Styles (Chess.com style) */
 .play-menu {
