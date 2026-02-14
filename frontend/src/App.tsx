@@ -10,6 +10,11 @@ export type BoardState = {
   stones: Stone[];
 };
 
+export type Prisoners = {
+  black: number;
+  white: number;
+};
+
 type PuzzleSummary = {
   id: number;
   name: string | null;
@@ -79,6 +84,7 @@ export const App: React.FC = () => {
 
   // Board state from online game (pushed up by OnlineGo)
   const [onlineBoardState, setOnlineBoardState] = useState<BoardState | null>(null);
+  const [onlinePrisoners, setOnlinePrisoners] = useState<Prisoners>({ black: 0, white: 0 });
   // Use a ref for the move handler to avoid the React useState pitfall where
   // passing a function to a setter is interpreted as a functional update.
   const onlineMoveHandlerRef = useRef<((x: number, y: number) => void) | null>(null);
@@ -159,6 +165,7 @@ export const App: React.FC = () => {
   // Determine what board to display
   const isOnlineRoom = mode === 'online-room' || mode === 'online-create';
   const displayBoardState = currentGame?.state.board || onlineBoardState || sandboxBoardState;
+  const prisonerCount = onlinePrisoners;
 
   const handleBoardMove = (x: number, y: number) => {
     const handler = onlineMoveHandlerRef.current;
@@ -179,6 +186,7 @@ export const App: React.FC = () => {
     setMode('menu');
     setCurrentGame(null);
     setOnlineBoardState(null);
+    setOnlinePrisoners({ black: 0, white: 0 });
     onlineMoveHandlerRef.current = null;
     setOnlineRoomId(null);
     window.history.replaceState({}, '', '/');
@@ -196,6 +204,19 @@ export const App: React.FC = () => {
     <div className="app chess-layout">
       <header className="app-header">
         <h1 onClick={goToMainMenu} style={{ cursor: 'pointer' }}>Let's play GO!</h1>
+        {isOnlineRoom && (
+          <div className="prisoner-bar" aria-label="Prisoner count">
+            <span className="prisoner-label">Prisoners</span>
+            <span className="prisoner-pill">
+              <span className="prisoner-stone black">●</span>
+              <span className="prisoner-text">Black: {prisonerCount.black}</span>
+            </span>
+            <span className="prisoner-pill">
+              <span className="prisoner-stone white">●</span>
+              <span className="prisoner-text">White: {prisonerCount.white}</span>
+            </span>
+          </div>
+        )}
       </header>
       <main className="app-main chess-main">
         {/* Left side: Board */}
@@ -354,6 +375,7 @@ export const App: React.FC = () => {
               roomId={onlineRoomId}
               onBack={goToMainMenu}
               onBoardState={setOnlineBoardState}
+              onPrisoners={setOnlinePrisoners}
               onMoveHandler={setOnlineMoveHandler}
               onRoomCreated={(roomId: string) => {
                 setOnlineRoomId(roomId);

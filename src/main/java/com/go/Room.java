@@ -43,6 +43,14 @@ public class Room {
         return updatedAt;
     }
 
+    public int getBlackPrisoners() {
+        return board.getBlackPrisoners();
+    }
+
+    public int getWhitePrisoners() {
+        return board.getWhitePrisoners();
+    }
+
     /**
      * Attempts to apply a move. Thread-safe.
      * Only validates that the move is legal according to Go rules.

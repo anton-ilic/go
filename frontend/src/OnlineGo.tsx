@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import type { BoardState } from './App';
+import type { BoardState, Prisoners } from './App';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
@@ -21,6 +21,7 @@ export type RoomState = {
   roomId: string;
   turn: 'BLACK' | 'WHITE';
   moveNumber: number;
+  prisoners: Prisoners;
   board: BoardState;
 };
 
@@ -28,11 +29,12 @@ type Props = {
   roomId: string | null;          // null = "create room" flow, string = "join existing room"
   onBack: () => void;
   onBoardState: (board: BoardState | null) => void;
+  onPrisoners: (prisoners: Prisoners) => void;
   onMoveHandler: (handler: ((x: number, y: number) => void) | null) => void;
   onRoomCreated?: (roomId: string) => void;  // Callback when room is created
 };
 
-export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoardState, onMoveHandler, onRoomCreated }) => {
+export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoardState, onPrisoners, onMoveHandler, onRoomCreated }) => {
   const [phase, setPhase] = useState<'creating' | 'joining' | 'connected' | 'error'>(
     initialRoomId ? 'joining' : 'creating'
   );
@@ -70,6 +72,11 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
       text: 'A group with no liberties is captured and removed from the board.',
     },
   ]), []);
+
+  const toPrisoners = useCallback((raw: any): Prisoners => ({
+    black: Number(raw?.black ?? 0),
+    white: Number(raw?.white ?? 0),
+  }), []);
 
   // --- Create room ---
   useEffect(() => {
@@ -123,17 +130,19 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
             roomId: data.roomId,
             turn: data.turn,
             moveNumber: data.moveNumber,
+            prisoners: toPrisoners(data.prisoners),
             board: data.board,
           };
           console.log('Fetched initial state via REST:', state);
           setRoomState(state);
           onBoardState(state.board);
+          onPrisoners(state.prisoners);
         }
       } catch (err) {
         console.error('Failed to fetch initial state:', err);
       }
     })();
-  }, [phase, roomId, roomState, onBoardState]);
+  }, [phase, roomId, roomState, onBoardState, onPrisoners, toPrisoners]);
 
   // --- Poll for state updates when WebSocket is disconnected ---
   useEffect(() => {
@@ -157,9 +166,11 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
                 roomId: data.roomId,
                 turn: data.turn,
                 moveNumber: data.moveNumber,
+                prisoners: toPrisoners(data.prisoners),
                 board: data.board,
               };
               onBoardState(newState.board);
+              onPrisoners(newState.prisoners);
               return newState;
             }
             // Only update if moveNumber changed (opponent made a move)
@@ -168,10 +179,12 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
                 roomId: data.roomId,
                 turn: data.turn,
                 moveNumber: data.moveNumber,
+                prisoners: toPrisoners(data.prisoners),
                 board: data.board,
               };
               console.log('Polled state update:', newState, 'old:', currentState.moveNumber);
               onBoardState(newState.board);
+              onPrisoners(newState.prisoners);
               return newState;
             }
             return currentState;
@@ -183,7 +196,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     }, 3000); // Poll every 3 seconds (less aggressive to avoid race conditions)
 
     return () => clearInterval(interval);
-  }, [roomId, roomState, onBoardState]);
+  }, [roomId, roomState, onBoardState, onPrisoners, toPrisoners]);
 
   // --- Connect WebSocket ---
   useEffect(() => {
@@ -224,11 +237,13 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
             roomId: data.roomId,
             turn: data.turn,
             moveNumber: data.moveNumber,
+            prisoners: toPrisoners(data.prisoners),
             board: data.board,
           };
           console.log('Setting room state:', state);
           setRoomState(state);
           onBoardState(state.board);
+          onPrisoners(state.prisoners);
         } else if (data.type === 'error') {
           setStatusMessage(data.message);
           // Error messages also include state — update if present
@@ -237,10 +252,12 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
               roomId: data.roomId,
               turn: data.turn,
               moveNumber: data.moveNumber,
+              prisoners: toPrisoners(data.prisoners),
               board: data.board,
             };
             setRoomState(state);
             onBoardState(state.board);
+            onPrisoners(state.prisoners);
           }
           setTimeout(() => setStatusMessage(null), 3000);
         }
@@ -283,7 +300,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [phase, roomId, onBoardState]);
+  }, [phase, roomId, onBoardState, onPrisoners, toPrisoners]);
 
   // --- Move handler (passed up to App for Board clicks) ---
   const handlePlayMove = useCallback(async (x: number, y: number) => {
@@ -344,10 +361,12 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
           roomId: data.roomId,
           turn: data.turn,
           moveNumber: data.moveNumber,
+          prisoners: toPrisoners(data.prisoners),
           board: data.board,
         };
         setRoomState(newState);
         onBoardState(newState.board);
+        onPrisoners(newState.prisoners);
       }
       
       if (res.ok && data.success) {
@@ -374,7 +393,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
       setStatusMessage(errorMsg);
       setTimeout(() => setStatusMessage(null), 4000);
     }
-  }, [roomState]);
+  }, [roomState, onBoardState, onPrisoners, toPrisoners]);
 
   // Update parent's move handler - enable when we have roomState (works with REST fallback even if WebSocket disconnected)
   useEffect(() => {
@@ -389,9 +408,10 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
   useEffect(() => {
     return () => {
       onBoardState(null);
+      onPrisoners({ black: 0, white: 0 });
       onMoveHandler(null);
     };
-  }, [onBoardState, onMoveHandler]);
+  }, [onBoardState, onPrisoners, onMoveHandler]);
 
   // Rotate Go rule tips for lightweight in-app guidance.
   useEffect(() => {
@@ -426,10 +446,12 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
           roomId: data.roomId,
           turn: data.turn,
           moveNumber: data.moveNumber,
+          prisoners: toPrisoners(data.prisoners),
           board: data.board,
         };
         setRoomState(newState);
         onBoardState(newState.board);
+        onPrisoners(newState.prisoners);
         setStatusMessage('Turn passed.');
         setTimeout(() => setStatusMessage(null), 2000);
       } else {
@@ -459,6 +481,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
       wsRef.current = null;
     }
     onBoardState(null);
+    onPrisoners({ black: 0, white: 0 });
     onMoveHandler(null);
     // Reset URL
     window.history.replaceState({}, '', '/');

@@ -1,7 +1,6 @@
 package com.go;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -32,6 +31,8 @@ public class Board {
     public static final int BOARD_SIZE = 11;
     private boolean moved;
     private boolean toggle = true; //toggle value, true: White, false: Black
+    private int blackPrisoners; // white stones captured by black
+    private int whitePrisoners; // black stones captured by white
 
     public Board() {
         this.layout = new int[BOARD_SIZE][BOARD_SIZE];
@@ -40,6 +41,8 @@ public class Board {
         this.initialWhite = new ArrayList<>();
         this.initialBlack = new ArrayList<>();
         this.moved = false;
+        this.blackPrisoners = 0;
+        this.whitePrisoners = 0;
         emptyBoard();
     }
 
@@ -51,6 +54,8 @@ public class Board {
 
     private void emptyBoard() {
         moved = false;
+        blackPrisoners = 0;
+        whitePrisoners = 0;
         emptyLayout(layout);
         emptyLayout(previous_layout);
     }
@@ -93,12 +98,13 @@ public class Board {
         }
 
 
-        // Capture opponent groups.
+        // Capture opponent groups and count prisoners.
+        int capturedStones = 0;
         for (int[] neighbor : getNeighbors(x, y)) {
             int nx = neighbor[0], ny = neighbor[1];
             if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE) {
                 if (layout[nx][ny] != EMPTY && layout[nx][ny] != layout[x][y]) {
-                    captureGroup(nx, ny);
+                    capturedStones += captureGroup(nx, ny);
                 }
             }
         }
@@ -116,9 +122,25 @@ public class Board {
             return false;
         }
 
+        if (capturedStones > 0) {
+            if (isWhite) {
+                whitePrisoners += capturedStones;
+            } else {
+                blackPrisoners += capturedStones;
+            }
+        }
+
         copy_layout(previous_layout, previous_layout_temp);
         moved = true;
         return true;
+    }
+
+    public int getBlackPrisoners() {
+        return blackPrisoners;
+    }
+
+    public int getWhitePrisoners() {
+        return whitePrisoners;
     }
 
     private boolean ko_violation(){
@@ -217,7 +239,7 @@ public class Board {
         return neighbors;
     }
 
-    private void captureGroup(int x, int y) {
+    private int captureGroup(int x, int y) {
         int color = layout[x][y];
         boolean[][] visited = new boolean[BOARD_SIZE][BOARD_SIZE];
         Queue<int[]> queue = new LinkedList<>(); // store FIFO nodes
@@ -248,9 +270,13 @@ public class Board {
 
         // Remove the group if no liberties
         if (!hasLiberties(x, y)) {
+            int removed = 0;
             for (int[] stone : group) {
                 layout[stone[0]][stone[1]] = EMPTY;
+                removed++;
             }
+            return removed;
         }
+        return 0;
     }
 }

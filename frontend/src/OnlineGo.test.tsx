@@ -18,6 +18,7 @@ describe('OnlineGo', () => {
         roomId={null}
         onBack={() => {}}
         onBoardState={() => {}}
+        onPrisoners={() => {}}
         onMoveHandler={() => {}}
       />
     );
@@ -30,6 +31,7 @@ describe('OnlineGo', () => {
         roomId="ABC12345"
         onBack={() => {}}
         onBoardState={() => {}}
+        onPrisoners={() => {}}
         onMoveHandler={() => {}}
       />
     );

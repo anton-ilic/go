@@ -159,6 +159,10 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         obj.addProperty("roomId", room.getRoomId());
         obj.addProperty("turn", room.getTurn());
         obj.addProperty("moveNumber", room.getMoveNumber());
+        JsonObject prisonersObj = new JsonObject();
+        prisonersObj.addProperty("black", room.getBlackPrisoners());
+        prisonersObj.addProperty("white", room.getWhitePrisoners());
+        obj.add("prisoners", prisonersObj);
 
         // Build board
         int size = Board.BOARD_SIZE;

@@ -47,6 +47,7 @@ public class RoomController {
                 "roomId", room.getRoomId(),
                 "turn", room.getTurn(),
                 "moveNumber", room.getMoveNumber(),
+                "prisoners", toPrisonersDto(room),
                 "board", toBoardDto(room)
         ));
     }
@@ -91,6 +92,7 @@ public class RoomController {
                     "roomId", room.getRoomId(),
                     "turn", room.getTurn(),
                     "moveNumber", room.getMoveNumber(),
+                    "prisoners", toPrisonersDto(room),
                     "board", toBoardDto(room)
             ));
         } else {
@@ -101,6 +103,7 @@ public class RoomController {
                             "roomId", room.getRoomId(),
                             "turn", room.getTurn(),
                             "moveNumber", room.getMoveNumber(),
+                            "prisoners", toPrisonersDto(room),
                             "board", toBoardDto(room)
                     ));
         }
@@ -128,6 +131,7 @@ public class RoomController {
                         "roomId", room.getRoomId(),
                         "turn", room.getTurn(),
                         "moveNumber", room.getMoveNumber(),
+                        "prisoners", toPrisonersDto(room),
                         "board", toBoardDto(room)
                 ));
             } else {
@@ -138,6 +142,7 @@ public class RoomController {
                                 "roomId", room.getRoomId(),
                                 "turn", room.getTurn(),
                                 "moveNumber", room.getMoveNumber(),
+                                "prisoners", toPrisonersDto(room),
                                 "board", toBoardDto(room)
                         ));
             }
@@ -164,5 +169,12 @@ public class RoomController {
             }
         }
         return new BoardStateDto(size, stones);
+    }
+
+    private Map<String, Integer> toPrisonersDto(Room room) {
+        return Map.of(
+                "black", room.getBlackPrisoners(),
+                "white", room.getWhitePrisoners()
+        );
     }
 }
