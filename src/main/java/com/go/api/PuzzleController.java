@@ -34,7 +34,7 @@ public class PuzzleController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<PuzzleDto> getPuzzle(@PathVariable long id) {
+    public ResponseEntity<PuzzleDto> getPuzzle(@PathVariable("id") long id) {
         try {
             PuzzleRepository.PuzzleData puzzle = puzzleService.getPuzzle(id);
             PuzzleDto dto = new PuzzleDto(

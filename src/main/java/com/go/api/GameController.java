@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,6 +28,7 @@ import java.util.UUID;
 @RequestMapping("/api/games")
 public class GameController {
 
+    private static final Logger log = LoggerFactory.getLogger(GameController.class);
     private final GameService gameService;
 
     public GameController(GameService gameService) {
@@ -49,7 +52,7 @@ public class GameController {
     }
 
     @PostMapping("/{gameId}/moves")
-    public ResponseEntity<MoveResponse> playMove(@PathVariable String gameId,
+    public ResponseEntity<MoveResponse> playMove(@PathVariable("gameId") String gameId,
                                                  @RequestBody MoveRequest request) {
         UUID id;
         try {
@@ -59,8 +62,15 @@ public class GameController {
                     .body(new MoveResponse(gameId, "INVALID_GAME_ID", "Invalid game id", null));
         }
 
+        int x = request.x();
+        int y = request.y();
+        if (x < 0 || x >= Board.BOARD_SIZE || y < 0 || y >= Board.BOARD_SIZE) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new MoveResponse(gameId, "INVALID_MOVE", "Coordinates out of bounds.", null));
+        }
+
         try {
-            boolean correct = gameService.playMove(id, request.x(), request.y());
+            boolean correct = gameService.playMove(id, x, y);
             GameSession session = gameService.getSession(id);
             Level level = session.getLevel();
             GameStateDto state = toGameState(level);
@@ -87,9 +97,16 @@ public class GameController {
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(new MoveResponse(gameId, "GAME_NOT_FOUND", "Game not found", null));
-        } catch (RuntimeException ex) {
+        } catch (Exception ex) {
+            log.warn("Play move failed: gameId={}, x={}, y={}", gameId, request.x(), request.y(), ex);
+            String msg = ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
+            GameStateDto state = null;
+            try {
+                GameSession session = gameService.getSession(id);
+                state = toGameState(session.getLevel());
+            } catch (Exception ignored) { }
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new MoveResponse(gameId, "MOVE_FAILED", "Unable to apply move for this puzzle state.", null));
+                    .body(new MoveResponse(gameId, "MOVE_FAILED", "Move failed: " + msg, state));
         }
     }
 
