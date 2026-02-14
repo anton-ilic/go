@@ -1,8 +1,5 @@
 package com.go;
 import java.util.List;
-
-import javax.swing.JOptionPane;
-import javax.swing.SwingUtilities;        
 /**
  * Represents a specific go puzzle. 
  *
@@ -39,14 +36,36 @@ public class Level {
      * @return
      */
     public boolean playMove(int x, int y, boolean isWhite){
+        if (isSolved()) {
+            // Ignore extra clicks after completion to avoid indexing past solution.
+            return true;
+        }
+
+        if (solution == null || solution.isEmpty() || current < 0 || current >= solution.size()) {
+            reset();
+            return false;
+        }
+
         int[] expectedMove = solution.get(current);
+        if (expectedMove == null || expectedMove.length < 2) {
+            reset();
+            return false;
+        }
+
         if(x == expectedMove[0] && y == expectedMove[1]){
-            board.play(x, y, isWhite);
+            boolean playerMoveApplied = board.play(x, y, isWhite);
+            if (!playerMoveApplied) {
+                reset();
+                return false;
+            }
             current ++;
 
             if (current < solution.size()) {
                 int[] opponentMove = solution.get(current);
-                board.play(opponentMove[0], opponentMove[1], !isWhite);
+                if (opponentMove == null || opponentMove.length < 2 || !board.play(opponentMove[0], opponentMove[1], !isWhite)) {
+                    reset();
+                    return false;
+                }
                 current ++;
             }
 

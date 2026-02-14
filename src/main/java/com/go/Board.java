@@ -30,7 +30,7 @@ public class Board {
     public static final int EMPTY = 0;
     public static final int BOARD_SIZE = 11;
     private boolean moved;
-    private boolean toggle = true; //toggle value, true: White, false: Black
+    private boolean toggle = false; // toggle value, true: White, false: Black
     private int blackPrisoners; // white stones captured by black
     private int whitePrisoners; // black stones captured by white
 
@@ -54,10 +54,12 @@ public class Board {
 
     private void emptyBoard() {
         moved = false;
+        toggle = false;
         blackPrisoners = 0;
         whitePrisoners = 0;
         emptyLayout(layout);
         emptyLayout(previous_layout);
+        emptyLayout(previous_layout_temp);
     }
 
     private void emptyLayout(int[][] current){
@@ -155,7 +157,6 @@ public class Board {
     }
 
     private void copy_layout( int[][] victim,  int[][] target){
-        System.out.println("SETTING");
         for (int i = 0; i < BOARD_SIZE; i++) {
             for (int j = 0; j < BOARD_SIZE; j++) {
                 victim[i][j] = target[i][j];
@@ -168,7 +169,6 @@ public class Board {
         boolean returnValue = play(x, y, toggle);
         if(returnValue)
             toggle = !toggle;
-        moved = true;
         return returnValue;
     }
 

@@ -21,3 +21,5 @@ release.properties
 /target/
 /build/
 *.db
+
+/node_modules/

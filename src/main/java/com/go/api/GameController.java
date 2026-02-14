@@ -87,6 +87,9 @@ public class GameController {
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(new MoveResponse(gameId, "GAME_NOT_FOUND", "Game not found", null));
+        } catch (RuntimeException ex) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new MoveResponse(gameId, "MOVE_FAILED", "Unable to apply move for this puzzle state.", null));
         }
     }
 
