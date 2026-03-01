@@ -33,21 +33,20 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         String roomId = extractRoomId(session);
         if (roomId == null) {
-            session.close(CloseStatus.BAD_DATA);
+            closeQuietly(session, CloseStatus.BAD_DATA);
             return;
         }
 
         Room room = roomService.getRoom(roomId);
         if (room == null) {
-            sendError(session, "Room not found: " + roomId);
-            session.close(CloseStatus.BAD_DATA);
+            sendErrorQuietly(session, "Room not found: " + roomId);
+            closeQuietly(session, CloseStatus.BAD_DATA);
             return;
         }
 
         roomSessions.computeIfAbsent(roomId, k -> ConcurrentHashMap.newKeySet()).add(session);
 
-        // Send current state to the newly connected client
-        sendState(session, room);
+        sendStateQuietly(session, room);
     }
 
     @Override
@@ -57,7 +56,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
 
         Room room = roomService.getRoom(roomId);
         if (room == null) {
-            sendError(session, "Room not found");
+            sendErrorQuietly(session, "Room not found");
             return;
         }
 
@@ -65,7 +64,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         try {
             json = JsonParser.parseString(message.getPayload()).getAsJsonObject();
         } catch (Exception e) {
-            sendError(session, "Invalid JSON");
+            sendErrorQuietly(session, "Invalid JSON");
             return;
         }
 
@@ -75,7 +74,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             case "move" -> handleMove(session, room, json);
             case "pass" -> handlePass(session, room, json);
             case "resign" -> handleResign(session, room);
-            default -> sendError(session, "Unknown message type: " + type);
+            default -> sendErrorQuietly(session, "Unknown message type: " + type);
         }
     }
 
@@ -83,7 +82,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         if (room.resign()) {
             broadcastState(room);
         } else {
-            sendErrorWithState(session, "Game already ended", room);
+            sendErrorWithStateQuietly(session, "Game already ended", room);
         }
     }
 
@@ -96,7 +95,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         if (result.success()) {
             broadcastState(room);
         } else {
-            sendErrorWithState(session, result.message(), room);
+            sendErrorWithStateQuietly(session, result.message(), room);
         }
     }
 
@@ -106,7 +105,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         if (result.success()) {
             broadcastState(room);
         } else {
-            sendErrorWithState(session, result.message(), room);
+            sendErrorWithStateQuietly(session, result.message(), room);
         }
     }
 
@@ -142,22 +141,40 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    private void sendState(WebSocketSession session, Room room) throws IOException {
-        session.sendMessage(new TextMessage(buildStateJson(room)));
+    private void sendQuietly(WebSocketSession session, String payload) {
+        if (session == null || !session.isOpen()) return;
+        try {
+            session.sendMessage(new TextMessage(payload));
+        } catch (IOException e) {
+            // Client may have closed; avoid logging as error to reduce noise
+        }
     }
 
-    private void sendError(WebSocketSession session, String message) throws IOException {
+    private void closeQuietly(WebSocketSession session, CloseStatus status) {
+        if (session == null || !session.isOpen()) return;
+        try {
+            session.close(status);
+        } catch (IOException ignored) {}
+    }
+
+    private void sendStateQuietly(WebSocketSession session, Room room) {
+        sendQuietly(session, buildStateJson(room));
+    }
+
+    private void sendErrorQuietly(WebSocketSession session, String message) {
         JsonObject obj = new JsonObject();
         obj.addProperty("type", "error");
         obj.addProperty("message", message);
-        session.sendMessage(new TextMessage(gson.toJson(obj)));
+        sendQuietly(session, gson.toJson(obj));
     }
 
-    private void sendErrorWithState(WebSocketSession session, String message, Room room) throws IOException {
-        JsonObject obj = JsonParser.parseString(buildStateJson(room)).getAsJsonObject();
-        obj.addProperty("type", "error");
-        obj.addProperty("message", message);
-        session.sendMessage(new TextMessage(gson.toJson(obj)));
+    private void sendErrorWithStateQuietly(WebSocketSession session, String message, Room room) {
+        try {
+            JsonObject obj = JsonParser.parseString(buildStateJson(room)).getAsJsonObject();
+            obj.addProperty("type", "error");
+            obj.addProperty("message", message);
+            sendQuietly(session, gson.toJson(obj));
+        } catch (Exception ignored) {}
     }
 
     private String buildStateJson(Room room) {

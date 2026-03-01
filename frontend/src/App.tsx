@@ -104,6 +104,21 @@ export const App: React.FC = () => {
   const [sandboxStones, setSandboxStones] = useState<Stone[]>([]);
   const [sandboxNextColor, setSandboxNextColor] = useState<'BLACK' | 'WHITE'>('BLACK');
 
+  // Rotating Go tips (same as OnlineGo sidebar)
+  const ruleTips = useMemo(() => [
+    { title: 'Ko rule', text: 'You cannot immediately recapture to recreate the exact previous board position. Play elsewhere first.' },
+    { title: 'Komi', text: 'White gets extra points (komi) to balance Black moving first. Typical value is around 6.5 to 7.5.' },
+    { title: 'Passing', text: 'Pass when no profitable move remains. The game usually ends after two consecutive passes.' },
+    { title: 'Capturing', text: 'A group with no liberties is captured and removed from the board.' },
+  ], []);
+  const [ruleTipIndex, setRuleTipIndex] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setRuleTipIndex(prev => (prev + 1) % ruleTips.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [ruleTips.length]);
+
   useEffect(() => {
     const loadPuzzles = async () => {
       setLoadingPuzzles(true);
@@ -245,20 +260,15 @@ export const App: React.FC = () => {
           {/* === Main Menu === */}
           {mode === 'menu' && (
             <div className="play-menu">
-              <h2 className="play-menu-title">
-                <span className="menu-icon-large">⚫</span>
-                Play
-              </h2>
+              <h2 className="play-menu-title">Play</h2>
               <div className="play-options">
                 <div className="play-option-card" onClick={() => setMode('puzzle-list')}>
-                  <div className="play-option-icon">🧩</div>
                   <div className="play-option-content">
                     <div className="play-option-title">Play Puzzle</div>
                     <div className="play-option-subtitle">Solve Go puzzles and improve your skills</div>
                   </div>
                 </div>
                 <div className="play-option-card" onClick={() => setMode('online-menu')}>
-                  <div className="play-option-icon">⚡</div>
                   <div className="play-option-content">
                     <div className="play-option-title">Play Online</div>
                     <div className="play-option-subtitle">Hot-seat over the internet — share a link to play</div>
@@ -286,17 +296,18 @@ export const App: React.FC = () => {
                   )}
                 </div>
               </div>
+
+              <div className="quick-rules">
+                <div className="quick-rules-title">Game essentials</div>
+                <div className="quick-rule-topic">{ruleTips[ruleTipIndex].title}</div>
+                <div className="quick-rule-item">{ruleTips[ruleTipIndex].text}</div>
+              </div>
             </div>
           )}
-
-          {/* === Online Submenu === */}
           {mode === 'online-menu' && (
             <div className="play-menu">
               <button className="back-button" onClick={goToMainMenu}>← Back</button>
-              <h2 className="play-menu-title">
-                <span className="menu-icon-large">⚡</span>
-                Play Online
-              </h2>
+              <h2 className="play-menu-title">Play Online</h2>
               <div className="play-options">
                 <div
                   className="play-option-card"
@@ -306,14 +317,12 @@ export const App: React.FC = () => {
                     setCreateRoomError(null);
                   }}
                 >
-                  <div className="play-option-icon">⚡</div>
                   <div className="play-option-content">
                     <div className="play-option-title">Create Room</div>
                     <div className="play-option-subtitle">Start a new game and share the link</div>
                   </div>
                 </div>
                 <div className="play-option-card" onClick={() => setMode('online-join')}>
-                  <div className="play-option-icon">🤝</div>
                   <div className="play-option-content">
                     <div className="play-option-title">Join Room</div>
                     <div className="play-option-subtitle">Enter a room code to join</div>
