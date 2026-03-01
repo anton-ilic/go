@@ -110,6 +110,58 @@ public class GameController {
         }
     }
 
+    @PostMapping("/{gameId}/undo")
+    public ResponseEntity<MoveResponse> undo(@PathVariable("gameId") String gameId) {
+        UUID id;
+        try {
+            id = UUID.fromString(gameId);
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new MoveResponse(gameId, "INVALID_GAME_ID", "Invalid game id", null));
+        }
+        try {
+            boolean did = gameService.undo(id);
+            if (!did) {
+                GameSession session = gameService.getSession(id);
+                GameStateDto state = toGameState(session.getLevel());
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(new MoveResponse(gameId, "NOTHING_TO_UNDO", "Nothing to undo.", state));
+            }
+            GameSession session = gameService.getSession(id);
+            GameStateDto state = toGameState(session.getLevel());
+            return ResponseEntity.ok(new MoveResponse(gameId, "IN_PROGRESS", "Move undone.", state));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new MoveResponse(gameId, "GAME_NOT_FOUND", "Game not found", null));
+        }
+    }
+
+    @PostMapping("/{gameId}/redo")
+    public ResponseEntity<MoveResponse> redo(@PathVariable("gameId") String gameId) {
+        UUID id;
+        try {
+            id = UUID.fromString(gameId);
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new MoveResponse(gameId, "INVALID_GAME_ID", "Invalid game id", null));
+        }
+        try {
+            boolean did = gameService.redo(id);
+            if (!did) {
+                GameSession session = gameService.getSession(id);
+                GameStateDto state = toGameState(session.getLevel());
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(new MoveResponse(gameId, "NOTHING_TO_REDO", "Nothing to redo.", state));
+            }
+            GameSession session = gameService.getSession(id);
+            GameStateDto state = toGameState(session.getLevel());
+            return ResponseEntity.ok(new MoveResponse(gameId, "IN_PROGRESS", "Move redone.", state));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new MoveResponse(gameId, "GAME_NOT_FOUND", "Game not found", null));
+        }
+    }
+
     private GameStateDto toGameState(Level level) {
         int size = Board.BOARD_SIZE;
         List<BoardStateDto.StoneDto> stones = new ArrayList<>();

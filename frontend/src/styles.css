@@ -644,6 +644,52 @@ body {
   word-break: break-all;
 }
 
+/* Merged share: code + link in one block */
+.share-section-merged .invite-value-merged {
+  flex-wrap: wrap;
+  gap: 0.2rem;
+}
+.share-section-merged .share-code {
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  letter-spacing: 0.15em;
+  color: #fff;
+}
+.share-section-merged .share-sep {
+  color: #666;
+}
+.share-section-merged .share-url {
+  word-break: break-all;
+  color: #b8b8b8;
+}
+
+/* Undo / Redo */
+.undo-redo-section {
+  display: flex;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+}
+.btn-undo-redo {
+  flex: 1;
+  padding: 0.5rem 0.6rem;
+  background: #353535;
+  color: #e0e0e0;
+  border: 1px solid #555;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-undo-redo:hover:not(:disabled) {
+  background: #454545;
+  border-color: #666;
+}
+.btn-undo-redo:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .btn-copy-text {
   padding: 0.42rem 0.68rem;
   background: #353535;

@@ -82,13 +82,11 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         int x = json.get("x").getAsInt();
         int y = json.get("y").getAsInt();
 
-        Room.MoveResult result = room.applyMove(x, y);
+        Room.MoveResult result = roomService.applyMove(room.getRoomId(), x, y);
 
         if (result.success()) {
-            // Broadcast new state to all connected clients
             broadcastState(room);
         } else {
-            // Send error + current state to the requesting client only
             sendErrorWithState(session, result.message(), room);
         }
     }

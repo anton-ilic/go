@@ -1,6 +1,8 @@
 package com.go;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -33,6 +35,9 @@ public class Board {
     private boolean toggle = false; // toggle value, true: White, false: Black
     private int blackPrisoners; // white stones captured by black
     private int whitePrisoners; // black stones captured by white
+
+    private final Deque<BoardStateSnapshot> undoStack = new ArrayDeque<>();
+    private final Deque<BoardStateSnapshot> redoStack = new ArrayDeque<>();
 
     public Board() {
         this.layout = new int[BOARD_SIZE][BOARD_SIZE];
@@ -143,6 +148,75 @@ public class Board {
 
     public int getWhitePrisoners() {
         return whitePrisoners;
+    }
+
+    /** Creates a snapshot of the current board state (for undo/redo). */
+    public BoardStateSnapshot createStateSnapshot() {
+        return new BoardStateSnapshot(
+                layout,
+                previous_layout,
+                blackPrisoners,
+                whitePrisoners,
+                toggle
+        );
+    }
+
+    /** Saves current state to undo stack. Call before applying a move. Returns the snapshot that was pushed. */
+    public BoardStateSnapshot saveState() {
+        BoardStateSnapshot s = createStateSnapshot();
+        undoStack.addLast(s);
+        return s;
+    }
+
+    /** Restores board from a snapshot (used by undo/redo). */
+    public void restoreState(BoardStateSnapshot s) {
+        copy_layout(layout, s.getLayout());
+        copy_layout(previous_layout, s.getPreviousLayout());
+        copy_layout(previous_layout_temp, s.getPreviousLayout());
+        blackPrisoners = s.getBlackPrisoners();
+        whitePrisoners = s.getWhitePrisoners();
+        toggle = s.isTurnIsWhite();
+        moved = true; // so ko check has a previous state
+    }
+
+    /** Undoes one move. Returns true if undo was performed. */
+    public boolean undo() {
+        if (undoStack.isEmpty()) return false;
+        BoardStateSnapshot current = createStateSnapshot();
+        redoStack.addLast(current);
+        BoardStateSnapshot prev = undoStack.removeLast();
+        restoreState(prev);
+        return true;
+    }
+
+    /** Redoes one move. Returns true if redo was performed. */
+    public boolean redo() {
+        if (redoStack.isEmpty()) return false;
+        BoardStateSnapshot current = createStateSnapshot();
+        undoStack.addLast(current);
+        BoardStateSnapshot next = redoStack.removeLast();
+        restoreState(next);
+        return true;
+    }
+
+    /** Clears the redo stack. Call after a new move. */
+    public void clearRedo() {
+        redoStack.clear();
+    }
+
+    public boolean canUndo() {
+        return !undoStack.isEmpty();
+    }
+
+    public boolean canRedo() {
+        return !redoStack.isEmpty();
+    }
+
+    /** Removes the top of the undo stack without pushing current to redo (e.g. after an illegal move). */
+    public void popUndoStack() {
+        if (!undoStack.isEmpty()) {
+            undoStack.removeLast();
+        }
     }
 
     private boolean ko_violation(){

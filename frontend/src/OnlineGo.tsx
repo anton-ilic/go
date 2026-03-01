@@ -23,6 +23,8 @@ export type RoomState = {
   moveNumber: number;
   prisoners: Prisoners;
   board: BoardState;
+  canUndo?: boolean;
+  canRedo?: boolean;
 };
 
 type Props = {
@@ -132,6 +134,8 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
             moveNumber: data.moveNumber,
             prisoners: toPrisoners(data.prisoners),
             board: data.board,
+            canUndo: data.canUndo ?? false,
+            canRedo: data.canRedo ?? false,
           };
           console.log('Fetched initial state via REST:', state);
           setRoomState(state);
@@ -168,6 +172,8 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
                 moveNumber: data.moveNumber,
                 prisoners: toPrisoners(data.prisoners),
                 board: data.board,
+                canUndo: data.canUndo ?? false,
+                canRedo: data.canRedo ?? false,
               };
               onBoardState(newState.board);
               onPrisoners(newState.prisoners);
@@ -181,6 +187,8 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
                 moveNumber: data.moveNumber,
                 prisoners: toPrisoners(data.prisoners),
                 board: data.board,
+                canUndo: data.canUndo ?? currentState.canUndo,
+                canRedo: data.canRedo ?? currentState.canRedo,
               };
               console.log('Polled state update:', newState, 'old:', currentState.moveNumber);
               onBoardState(newState.board);
@@ -239,6 +247,8 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
             moveNumber: data.moveNumber,
             prisoners: toPrisoners(data.prisoners),
             board: data.board,
+            canUndo: data.canUndo ?? false,
+            canRedo: data.canRedo ?? false,
           };
           console.log('Setting room state:', state);
           setRoomState(state);
@@ -254,6 +264,8 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
               moveNumber: data.moveNumber,
               prisoners: toPrisoners(data.prisoners),
               board: data.board,
+              canUndo: data.canUndo ?? false,
+              canRedo: data.canRedo ?? false,
             };
             setRoomState(state);
             onBoardState(state.board);
@@ -363,6 +375,8 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
           moveNumber: data.moveNumber,
           prisoners: toPrisoners(data.prisoners),
           board: data.board,
+          canUndo: data.canUndo ?? roomState.canUndo,
+          canRedo: data.canRedo ?? roomState.canRedo,
         };
         setRoomState(newState);
         onBoardState(newState.board);
@@ -448,6 +462,8 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
           moveNumber: data.moveNumber,
           prisoners: toPrisoners(data.prisoners),
           board: data.board,
+          canUndo: data.canUndo ?? false,
+          canRedo: data.canRedo ?? false,
         };
         setRoomState(newState);
         onBoardState(newState.board);
@@ -462,6 +478,66 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
       console.error('Failed to pass via REST:', err);
       setStatusMessage('Failed to pass. Please check connection.');
       setTimeout(() => setStatusMessage(null), 3000);
+    }
+  };
+
+  const handleUndo = async () => {
+    if (!roomState?.roomId) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/rooms/${roomState.roomId}/undo`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success && data.board != null) {
+        const newState: RoomState = {
+          roomId: data.roomId,
+          turn: data.turn,
+          moveNumber: data.moveNumber,
+          prisoners: toPrisoners(data.prisoners),
+          board: data.board,
+          canUndo: data.canUndo ?? false,
+          canRedo: data.canRedo ?? false,
+        };
+        setRoomState(newState);
+        onBoardState(newState.board);
+        onPrisoners(newState.prisoners);
+        setStatusMessage(data.message ?? 'Move undone.');
+      } else {
+        setStatusMessage(data.message ?? 'Nothing to undo.');
+      }
+      setTimeout(() => setStatusMessage(null), 2500);
+    } catch (err) {
+      console.error('Undo failed:', err);
+      setStatusMessage('Undo failed');
+      setTimeout(() => setStatusMessage(null), 2500);
+    }
+  };
+
+  const handleRedo = async () => {
+    if (!roomState?.roomId) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/rooms/${roomState.roomId}/redo`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success && data.board != null) {
+        const newState: RoomState = {
+          roomId: data.roomId,
+          turn: data.turn,
+          moveNumber: data.moveNumber,
+          prisoners: toPrisoners(data.prisoners),
+          board: data.board,
+          canUndo: data.canUndo ?? false,
+          canRedo: data.canRedo ?? false,
+        };
+        setRoomState(newState);
+        onBoardState(newState.board);
+        onPrisoners(newState.prisoners);
+        setStatusMessage(data.message ?? 'Move redone.');
+      } else {
+        setStatusMessage(data.message ?? 'Nothing to redo.');
+      }
+      setTimeout(() => setStatusMessage(null), 2500);
+    } catch (err) {
+      console.error('Redo failed:', err);
+      setStatusMessage('Redo failed');
+      setTimeout(() => setStatusMessage(null), 2500);
     }
   };
 
@@ -537,37 +613,53 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
               </div>
             )}
 
-            {/* Room code + share */}
-            <div className="room-code-section">
+            {/* Share: room code + invite link in one block */}
+            <div className="room-code-section share-section-merged">
               <div className="room-code-header">
-                <div className="room-code-label">Room code</div>
+                <div className="room-code-label">Share</div>
                 <button
                   type="button"
                   className="btn-copy-text"
-                  onClick={() => roomId && copyToClipboard(roomId)}
-                  title="Copy room code"
+                  onClick={() => copyToClipboard(shareUrl || roomId || '')}
+                  title="Copy invite link"
+                  disabled={!roomId}
                 >
-                  Copy code
+                  Copy link
                 </button>
               </div>
-              <div className="invite-value invite-value-code">{roomId}</div>
-              <div className="room-code-hint">Share this code or link with a friend to join instantly.</div>
+              <div className="invite-value invite-value-merged">
+                {roomId && <span className="share-code">{roomId}</span>}
+                {shareUrl && (
+                  <>
+                    {roomId && <span className="share-sep"> · </span>}
+                    <span className="share-url">{shareUrl}</span>
+                  </>
+                )}
+              </div>
+              <div className="room-code-hint">Share this link or code with a friend to join instantly.</div>
             </div>
 
-            {shareUrl && (
-              <div className="share-section">
-                <div className="share-header">
-                  <div className="share-label">Invite link</div>
-                  <button
-                    type="button"
-                    className="btn-copy-text"
-                    onClick={() => copyToClipboard(shareUrl)}
-                    title="Copy link"
-                  >
-                    Copy link
-                  </button>
-                </div>
-                <div className="invite-value invite-value-link">{shareUrl}</div>
+            {/* Undo / Redo */}
+            {roomState && (
+              <div className="undo-redo-section">
+                <button
+                  type="button"
+                  className="btn-undo-redo"
+                  onClick={handleUndo}
+                  disabled={!roomState.canUndo}
+                  title="Undo last move"
+                >
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  className="btn-undo-redo"
+                  onClick={handleRedo}
+                  disabled={!roomState.canRedo}
+                  title="Redo"
+                >
+                  Redo
+                </button>
               </div>
             )}
 

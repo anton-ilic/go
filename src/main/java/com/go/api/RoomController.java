@@ -48,7 +48,9 @@ public class RoomController {
                 "turn", room.getTurn(),
                 "moveNumber", room.getMoveNumber(),
                 "prisoners", toPrisonersDto(room),
-                "board", toBoardDto(room)
+                "board", toBoardDto(room),
+                "canUndo", room.canUndo(),
+                "canRedo", room.canRedo()
         ));
     }
 
@@ -83,23 +85,57 @@ public class RoomController {
         int x = ((Number) xObj).intValue();
         int y = ((Number) yObj).intValue();
 
-        Room.MoveResult result = room.applyMove(x, y);
+        Room.MoveResult result = roomService.applyMove(roomId, x, y);
+        Room updatedRoom = roomService.getRoom(roomId);
+        if (updatedRoom == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("success", false, "message", "Room not found"));
+        }
 
         if (result.success()) {
             return ResponseEntity.ok(Map.of(
                     "success", true,
                     "message", result.message(),
-                    "roomId", room.getRoomId(),
-                    "turn", room.getTurn(),
-                    "moveNumber", room.getMoveNumber(),
-                    "prisoners", toPrisonersDto(room),
-                    "board", toBoardDto(room)
+                    "roomId", updatedRoom.getRoomId(),
+                    "turn", updatedRoom.getTurn(),
+                    "moveNumber", updatedRoom.getMoveNumber(),
+                    "prisoners", toPrisonersDto(updatedRoom),
+                    "board", toBoardDto(updatedRoom),
+                    "canUndo", updatedRoom.canUndo(),
+                    "canRedo", updatedRoom.canRedo()
             ));
         } else {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of(
                             "success", false,
                             "message", result.message(),
+                            "roomId", updatedRoom.getRoomId(),
+                            "turn", updatedRoom.getTurn(),
+                            "moveNumber", updatedRoom.getMoveNumber(),
+                            "prisoners", toPrisonersDto(updatedRoom),
+                            "board", toBoardDto(updatedRoom),
+                            "canUndo", updatedRoom.canUndo(),
+                            "canRedo", updatedRoom.canRedo()
+                    ));
+        }
+    }
+
+    /**
+     * POST /api/rooms/{roomId}/undo — Undo the last move.
+     */
+    @PostMapping("/{roomId}/undo")
+    public ResponseEntity<?> undo(@PathVariable("roomId") String roomId) {
+        Room room = roomService.getRoom(roomId);
+        if (room == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("success", false, "message", "Room not found"));
+        }
+        boolean did = roomService.undo(roomId);
+        if (!did) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of(
+                            "success", false,
+                            "message", "Nothing to undo",
                             "roomId", room.getRoomId(),
                             "turn", room.getTurn(),
                             "moveNumber", room.getMoveNumber(),
@@ -107,6 +143,55 @@ public class RoomController {
                             "board", toBoardDto(room)
                     ));
         }
+        Room updated = roomService.getRoom(roomId);
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Move undone",
+                "roomId", updated.getRoomId(),
+                "turn", updated.getTurn(),
+                "moveNumber", updated.getMoveNumber(),
+                "prisoners", toPrisonersDto(updated),
+                "board", toBoardDto(updated),
+                "canUndo", updated.canUndo(),
+                "canRedo", updated.canRedo()
+        ));
+    }
+
+    /**
+     * POST /api/rooms/{roomId}/redo — Redo a previously undone move.
+     */
+    @PostMapping("/{roomId}/redo")
+    public ResponseEntity<?> redo(@PathVariable("roomId") String roomId) {
+        Room room = roomService.getRoom(roomId);
+        if (room == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("success", false, "message", "Room not found"));
+        }
+        boolean did = roomService.redo(roomId);
+        if (!did) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of(
+                            "success", false,
+                            "message", "Nothing to redo",
+                            "roomId", room.getRoomId(),
+                            "turn", room.getTurn(),
+                            "moveNumber", room.getMoveNumber(),
+                            "prisoners", toPrisonersDto(room),
+                            "board", toBoardDto(room)
+                    ));
+        }
+        Room updated = roomService.getRoom(roomId);
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Move redone",
+                "roomId", updated.getRoomId(),
+                "turn", updated.getTurn(),
+                "moveNumber", updated.getMoveNumber(),
+                "prisoners", toPrisonersDto(updated),
+                "board", toBoardDto(updated),
+                "canUndo", updated.canUndo(),
+                "canRedo", updated.canRedo()
+        ));
     }
 
     /**

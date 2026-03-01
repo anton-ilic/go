@@ -53,28 +53,27 @@ public class Room {
 
     /**
      * Attempts to apply a move. Thread-safe.
-     * Only validates that the move is legal according to Go rules.
-     *
-     * @param x board x coordinate
-     * @param y board y coordinate
-     * @return result describing success or failure
+     * Saves current state to undo stack before moving; clears redo stack on success.
      */
     public synchronized MoveResult applyMove(int x, int y) {
         if (x < 0 || x >= Board.BOARD_SIZE || y < 0 || y >= Board.BOARD_SIZE) {
-            return new MoveResult(false, "Coordinates out of bounds");
+            return new MoveResult(false, "Coordinates out of bounds", null);
         }
 
+        BoardStateSnapshot saved = board.saveState();
         boolean isWhite = "WHITE".equals(this.turn);
         boolean ok = board.play(x, y, isWhite);
         if (!ok) {
-            return new MoveResult(false, "Illegal move");
+            board.popUndoStack(); // remove the state we just saved
+            return new MoveResult(false, "Illegal move", null);
         }
 
+        board.clearRedo();
         this.turn = isWhite ? "BLACK" : "WHITE";
         this.moveNumber++;
         this.updatedAt = Instant.now();
 
-        return new MoveResult(true, "Move accepted");
+        return new MoveResult(true, "Move accepted", saved);
     }
 
     /**
@@ -88,5 +87,41 @@ public class Room {
         return new MoveResult(true, "Pass accepted");
     }
 
-    public record MoveResult(boolean success, String message) {}
+    /**
+     * Undo the last move. Returns true if undo was performed.
+     */
+    public synchronized boolean undo() {
+        if (!board.canUndo()) return false;
+        board.undo();
+        moveNumber--;
+        this.turn = "WHITE".equals(this.turn) ? "BLACK" : "WHITE";
+        this.updatedAt = Instant.now();
+        return true;
+    }
+
+    /**
+     * Redo a previously undone move. Returns true if redo was performed.
+     */
+    public synchronized boolean redo() {
+        if (!board.canRedo()) return false;
+        board.redo();
+        moveNumber++;
+        this.turn = "WHITE".equals(this.turn) ? "BLACK" : "WHITE";
+        this.updatedAt = Instant.now();
+        return true;
+    }
+
+    public boolean canUndo() {
+        return board.canUndo();
+    }
+
+    public boolean canRedo() {
+        return board.canRedo();
+    }
+
+    public record MoveResult(boolean success, String message, BoardStateSnapshot statePushedForUndo) {
+        public MoveResult(boolean success, String message) {
+            this(success, message, null);
+        }
+    }
 }

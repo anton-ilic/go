@@ -50,5 +50,15 @@ public class GameService {
         boolean isWhite = session.isPlayerWhite();
         return level.playMove(x, y, isWhite);
     }
+
+    public boolean undo(UUID sessionId) {
+        GameSession session = getSession(sessionId);
+        return session.getLevel().undo();
+    }
+
+    public boolean redo(UUID sessionId) {
+        GameSession session = getSession(sessionId);
+        return session.getLevel().redo();
+    }
 }
 

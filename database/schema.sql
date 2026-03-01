@@ -8,3 +8,14 @@ CREATE TABLE IF NOT EXISTS puzzles (
     player_to_move BOOLEAN NOT NULL DEFAULT 1, -- 1 for white, 0 for black
     notes TEXT
 );
+
+CREATE TABLE IF NOT EXISTS board_state_stack (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    stack_type TEXT NOT NULL,
+    state_json TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_board_state_stack_entity ON board_state_stack (entity_type, entity_id, stack_type);
+
