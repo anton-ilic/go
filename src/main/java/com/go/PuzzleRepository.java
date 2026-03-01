@@ -27,7 +27,7 @@ public interface PuzzleRepository {
             int difficulty,
             List<int[]> initialWhite,
             List<int[]> initialBlack,
-            List<int[]> solution,
+            List<SolutionStep> solution,
             boolean playerIsWhite,
             String notes
     ) {}

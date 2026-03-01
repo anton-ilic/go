@@ -85,7 +85,8 @@ public class SqlitePuzzleRepository implements PuzzleRepository {
             conn.setAutoCommit(false);
             try {
                 stmt.execute(schemaSql);
-                executeScript(stmt, seedSql);
+                // Execute entire seed script in one go; SQLite JDBC supports multi-statement scripts.
+                stmt.executeUpdate(seedSql);
                 conn.commit();
             } catch (SQLException ex) {
                 conn.rollback();
@@ -102,7 +103,7 @@ public class SqlitePuzzleRepository implements PuzzleRepository {
         try (Statement stmt = conn.createStatement()) {
             conn.setAutoCommit(false);
             try {
-                executeScript(stmt, seedSql);
+                stmt.executeUpdate(seedSql);
                 conn.commit();
             } catch (SQLException ex) {
                 conn.rollback();
@@ -129,16 +130,6 @@ public class SqlitePuzzleRepository implements PuzzleRepository {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read " + name, e);
-        }
-    }
-
-    /** Executes a SQL script containing multiple statements separated by semicolons. */
-    private void executeScript(Statement stmt, String script) throws SQLException {
-        for (String statement : script.split(";")) {
-            String trimmed = statement.trim();
-            if (!trimmed.isEmpty()) {
-                stmt.execute(trimmed);
-            }
         }
     }
 
@@ -195,7 +186,7 @@ public class SqlitePuzzleRepository implements PuzzleRepository {
 
                 List<int[]> initialWhite = Arrays.asList(gson.fromJson(initialWhiteJson, int[][].class));
                 List<int[]> initialBlack = Arrays.asList(gson.fromJson(initialBlackJson, int[][].class));
-                List<int[]> solution = Arrays.asList(gson.fromJson(solutionJson, int[][].class));
+                List<SolutionStep> solution = SolutionParser.parse(solutionJson);
 
                 PuzzleData data = new PuzzleData(
                         id,

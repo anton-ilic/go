@@ -36,7 +36,7 @@ public class PuzzleLoader {
 
                 List<int[]> initialWhite = Arrays.asList(gson.fromJson(initialWhiteJson, int[][].class));
                 List<int[]> initialBlack = Arrays.asList(gson.fromJson(initialBlackJson, int[][].class));
-                List<int[]> solution = Arrays.asList(gson.fromJson(solutionJson, int[][].class));
+                List<SolutionStep> solution = SolutionParser.parse(solutionJson);
 
                 Board board = new Board();
                 board.setIntialStones(initialWhite, initialBlack);

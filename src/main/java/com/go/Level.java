@@ -1,5 +1,6 @@
 package com.go;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 
@@ -9,7 +10,8 @@ import java.util.List;
  */
 public class Level {
     private Board board;
-    private List<int[]> solution; //lists ordered set of moves to solve the puzzle, in format x,y, isWhite
+    /** Ordered steps: at each step the player may play any of the allowed moves; then the bot plays the fixed reply. */
+    private List<SolutionStep> steps;
     private int current;
 
     private static final class UndoEntry {
@@ -25,76 +27,67 @@ public class Level {
     private final Deque<UndoEntry> undoStack = new ArrayDeque<>();
     private final Deque<UndoEntry> redoStack = new ArrayDeque<>();
 
-    public Level(Board board, List<int[]> solution) {
+    public Level(Board board, List<SolutionStep> steps) {
         this.board = board;
-        this.solution = solution;
-        this.current = 0; 
+        this.steps = steps != null ? new ArrayList<>(steps) : new ArrayList<>();
+        this.current = 0;
     }
 
-    public Level(Board board, List<int[]> solution, List<int[]> initialWhiteStone, List<int[]> initialBlackStones) {
+    public Level(Board board, List<SolutionStep> steps, List<int[]> initialWhiteStone, List<int[]> initialBlackStones) {
         this.board = board;
-        this.solution = solution;
-        this.current = 0; 
+        this.steps = steps != null ? new ArrayList<>(steps) : new ArrayList<>();
+        this.current = 0;
 
         board.setIntialStones(initialWhiteStone, initialBlackStones);
-
     }
 
     /**
-     * Checks if current move is the correct move. If so, it can be played, else, level resets.
-     * Plays move for current color, and subsequent follow up move for next.
-     * 
-     * @param x
-     * @param y
-     * @param isWhite
-     * @return
+     * Checks if the move matches one of the allowed moves for the current step. If so, plays it
+     * and then the bot's reply (if any). Otherwise resets the puzzle.
      */
     public boolean playMove(int x, int y, boolean isWhite){
         if (isSolved()) {
-            // Ignore extra clicks after completion to avoid indexing past solution.
             return true;
         }
 
-        if (solution == null || solution.isEmpty() || current < 0 || current >= solution.size()) {
+        if (steps == null || steps.isEmpty() || current < 0 || current >= steps.size()) {
             reset();
             return false;
         }
 
-        int[] expectedMove = solution.get(current);
-        if (expectedMove == null || expectedMove.length < 2) {
+        SolutionStep step = steps.get(current);
+        if (!isAllowedPlayerMove(step, x, y)) {
             reset();
             return false;
         }
 
-        if(x == expectedMove[0] && y == expectedMove[1]){
-            saveState();
-            boolean playerMoveApplied = board.play(x, y, isWhite);
-            if (!playerMoveApplied) {
-                popUndoStack();
-                reset();
+        saveState();
+        boolean playerMoveApplied = board.play(x, y, isWhite);
+        if (!playerMoveApplied) {
+            popUndoStack();
+            reset();
+            return false;
+        }
+
+        int[] opponentMove = step.opponentMove();
+        if (opponentMove != null && opponentMove.length >= 2) {
+            if (!board.play(opponentMove[0], opponentMove[1], !isWhite)) {
+                undo();
                 return false;
             }
-            current ++;
-
-            if (current < solution.size()) {
-                int[] opponentMove = solution.get(current);
-                if (opponentMove == null || opponentMove.length < 2 || !board.play(opponentMove[0], opponentMove[1], !isWhite)) {
-                    undo(); // revert the player move we just applied
-                    return false;
-                }
-                current ++;
-            }
-
-            clearRedo();
-            if(isSolved())
-                System.out.println("SOLVED"); 
-
-            return true;
         }
 
-        //reset the level. 
-        reset();
+        current++;
+        clearRedo();
+        return true;
+    }
 
+    private boolean isAllowedPlayerMove(SolutionStep step, int x, int y) {
+        for (int[] move : step.playerMoves()) {
+            if (move != null && move.length >= 2 && move[0] == x && move[1] == y) {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -108,7 +101,7 @@ public class Level {
     }
 
     public boolean isSolved(){
-        return current >= solution.size();
+        return current >= steps.size();
     }
 
     public int getStoneAt(int x, int y){
