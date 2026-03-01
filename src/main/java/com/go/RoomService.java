@@ -51,7 +51,11 @@ public class RoomService {
                 boardSize = s;
             }
         }
-        Room room = new Room(roomId, boardSize);
+        double komi = 6.5;
+        if (request != null && request.komi() != null) {
+            komi = request.komi();
+        }
+        Room room = new Room(roomId, boardSize, komi);
         rooms.put(roomId, room);
         return room;
     }

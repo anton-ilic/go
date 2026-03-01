@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -48,16 +49,20 @@ public class RoomController {
                     .body(Map.of("error", "Room not found"));
         }
 
-        return ResponseEntity.ok(Map.of(
-                "roomId", room.getRoomId(),
-                "boardSize", room.getBoardSize(),
-                "turn", room.getTurn(),
-                "moveNumber", room.getMoveNumber(),
-                "prisoners", toPrisonersDto(room),
-                "board", toBoardDto(room),
-                "canUndo", room.canUndo(),
-                "canRedo", room.canRedo()
-        ));
+        Map<String, Object> body = new HashMap<>();
+        body.put("roomId", room.getRoomId());
+        body.put("boardSize", room.getBoardSize());
+        body.put("turn", room.getTurn());
+        body.put("moveNumber", room.getMoveNumber());
+        body.put("komi", room.getKomi());
+        body.put("gameEnded", room.isGameEnded());
+        body.put("scoreBlack", room.getScoreBlack());
+        body.put("scoreWhite", room.getScoreWhite());
+        body.put("prisoners", toPrisonersDto(room));
+        body.put("board", toBoardDto(room));
+        body.put("canUndo", room.canUndo());
+        body.put("canRedo", room.canRedo());
+        return ResponseEntity.ok(body);
     }
 
     /**
@@ -99,30 +104,10 @@ public class RoomController {
         }
 
         if (result.success()) {
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", result.message(),
-                    "roomId", updatedRoom.getRoomId(),
-                    "turn", updatedRoom.getTurn(),
-                    "moveNumber", updatedRoom.getMoveNumber(),
-                    "prisoners", toPrisonersDto(updatedRoom),
-                    "board", toBoardDto(updatedRoom),
-                    "canUndo", updatedRoom.canUndo(),
-                    "canRedo", updatedRoom.canRedo()
-            ));
+            return ResponseEntity.ok(toRoomStateMap(updatedRoom, true, result.message()));
         } else {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of(
-                            "success", false,
-                            "message", result.message(),
-                            "roomId", updatedRoom.getRoomId(),
-                            "turn", updatedRoom.getTurn(),
-                            "moveNumber", updatedRoom.getMoveNumber(),
-                            "prisoners", toPrisonersDto(updatedRoom),
-                            "board", toBoardDto(updatedRoom),
-                            "canUndo", updatedRoom.canUndo(),
-                            "canRedo", updatedRoom.canRedo()
-                    ));
+                    .body(toRoomStateMap(updatedRoom, false, result.message()));
         }
     }
 
@@ -139,28 +124,10 @@ public class RoomController {
         boolean did = roomService.undo(roomId);
         if (!did) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of(
-                            "success", false,
-                            "message", "Nothing to undo",
-                            "roomId", room.getRoomId(),
-                            "turn", room.getTurn(),
-                            "moveNumber", room.getMoveNumber(),
-                            "prisoners", toPrisonersDto(room),
-                            "board", toBoardDto(room)
-                    ));
+                    .body(toRoomStateMap(room, false, "Nothing to undo"));
         }
         Room updated = roomService.getRoom(roomId);
-        return ResponseEntity.ok(Map.of(
-                "success", true,
-                "message", "Move undone",
-                "roomId", updated.getRoomId(),
-                "turn", updated.getTurn(),
-                "moveNumber", updated.getMoveNumber(),
-                "prisoners", toPrisonersDto(updated),
-                "board", toBoardDto(updated),
-                "canUndo", updated.canUndo(),
-                "canRedo", updated.canRedo()
-        ));
+        return ResponseEntity.ok(toRoomStateMap(updated, true, "Move undone"));
     }
 
     /**
@@ -176,28 +143,10 @@ public class RoomController {
         boolean did = roomService.redo(roomId);
         if (!did) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of(
-                            "success", false,
-                            "message", "Nothing to redo",
-                            "roomId", room.getRoomId(),
-                            "turn", room.getTurn(),
-                            "moveNumber", room.getMoveNumber(),
-                            "prisoners", toPrisonersDto(room),
-                            "board", toBoardDto(room)
-                    ));
+                    .body(toRoomStateMap(room, false, "Nothing to redo"));
         }
         Room updated = roomService.getRoom(roomId);
-        return ResponseEntity.ok(Map.of(
-                "success", true,
-                "message", "Move redone",
-                "roomId", updated.getRoomId(),
-                "turn", updated.getTurn(),
-                "moveNumber", updated.getMoveNumber(),
-                "prisoners", toPrisonersDto(updated),
-                "board", toBoardDto(updated),
-                "canUndo", updated.canUndo(),
-                "canRedo", updated.canRedo()
-        ));
+        return ResponseEntity.ok(toRoomStateMap(updated, true, "Move redone"));
     }
 
     /**
@@ -216,26 +165,10 @@ public class RoomController {
             Room.MoveResult result = room.pass();
 
             if (result.success()) {
-                return ResponseEntity.ok(Map.of(
-                        "success", true,
-                        "message", result.message(),
-                        "roomId", room.getRoomId(),
-                        "turn", room.getTurn(),
-                        "moveNumber", room.getMoveNumber(),
-                        "prisoners", toPrisonersDto(room),
-                        "board", toBoardDto(room)
-                ));
+                return ResponseEntity.ok(toRoomStateMap(room, true, result.message()));
             } else {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(Map.of(
-                                "success", false,
-                                "message", result.message(),
-                                "roomId", room.getRoomId(),
-                                "turn", room.getTurn(),
-                                "moveNumber", room.getMoveNumber(),
-                                "prisoners", toPrisonersDto(room),
-                                "board", toBoardDto(room)
-                        ));
+                        .body(toRoomStateMap(room, false, result.message()));
             }
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -267,5 +200,23 @@ public class RoomController {
                 "black", room.getBlackPrisoners(),
                 "white", room.getWhitePrisoners()
         );
+    }
+
+    private Map<String, Object> toRoomStateMap(Room room, boolean success, String message) {
+        Map<String, Object> m = new HashMap<>();
+        m.put("success", success);
+        if (message != null) m.put("message", message);
+        m.put("roomId", room.getRoomId());
+        m.put("turn", room.getTurn());
+        m.put("moveNumber", room.getMoveNumber());
+        m.put("komi", room.getKomi());
+        m.put("gameEnded", room.isGameEnded());
+        m.put("scoreBlack", room.getScoreBlack());
+        m.put("scoreWhite", room.getScoreWhite());
+        m.put("prisoners", toPrisonersDto(room));
+        m.put("board", toBoardDto(room));
+        m.put("canUndo", room.canUndo());
+        m.put("canRedo", room.canRedo());
+        return m;
     }
 }

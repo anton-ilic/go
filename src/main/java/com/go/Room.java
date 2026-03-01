@@ -10,21 +10,37 @@ public class Room {
 
     private final String roomId;
     private final Board board;
+    private final double komi;
     private String turn;       // "BLACK" or "WHITE"
     private int moveNumber;
     private Instant updatedAt;
+    /** Number of consecutive passes (0, 1, or 2). Game ends when this reaches 2. */
+    private int consecutivePasses;
+    private boolean gameEnded;
+    private double scoreBlack;
+    private double scoreWhite;
 
     public Room(String roomId) {
-        this(roomId, Board.DEFAULT_BOARD_SIZE);
+        this(roomId, Board.DEFAULT_BOARD_SIZE, 6.5);
     }
 
-    /** Creates a room with the given board size (9, 11, or 19). */
+    /** Creates a room with the given board size (9, 11, or 19) and komi. */
     public Room(String roomId, int boardSize) {
+        this(roomId, boardSize, 6.5);
+    }
+
+    /** Creates a room with board size and komi (e.g. 6.5 for White). */
+    public Room(String roomId, int boardSize, double komi) {
         this.roomId = roomId;
+        this.komi = komi;
         this.board = new Board(boardSize);
         this.board.restart();
         this.turn = "BLACK";
         this.moveNumber = 0;
+        this.consecutivePasses = 0;
+        this.gameEnded = false;
+        this.scoreBlack = 0;
+        this.scoreWhite = 0;
         this.updatedAt = Instant.now();
     }
 
@@ -60,15 +76,24 @@ public class Room {
         return board.getWhitePrisoners();
     }
 
+    public double getKomi() { return komi; }
+    public boolean isGameEnded() { return gameEnded; }
+    public double getScoreBlack() { return scoreBlack; }
+    public double getScoreWhite() { return scoreWhite; }
+
     /**
      * Attempts to apply a move. Thread-safe.
      * Saves current state to undo stack before moving; clears redo stack on success.
      */
     public synchronized MoveResult applyMove(int x, int y) {
+        if (gameEnded) {
+            return new MoveResult(false, "Game has ended", null);
+        }
         if (x < 0 || x >= board.getBoardSize() || y < 0 || y >= board.getBoardSize()) {
             return new MoveResult(false, "Coordinates out of bounds", null);
         }
 
+        this.consecutivePasses = 0;
         BoardStateSnapshot saved = board.saveState();
         boolean isWhite = "WHITE".equals(this.turn);
         boolean ok = board.play(x, y, isWhite);
@@ -86,14 +111,25 @@ public class Room {
     }
 
     /**
-     * Pass turn without placing a stone.
+     * Pass turn without placing a stone. If both players pass consecutively, the game ends and scores are computed (Chinese + komi).
      */
     public synchronized MoveResult pass() {
+        if (gameEnded) {
+            return new MoveResult(false, "Game has ended", null);
+        }
         this.turn = "WHITE".equals(this.turn) ? "BLACK" : "WHITE";
         this.moveNumber++;
+        this.consecutivePasses++;
         this.updatedAt = Instant.now();
 
-        return new MoveResult(true, "Pass accepted");
+        if (consecutivePasses >= 2) {
+            gameEnded = true;
+            ChineseScoring.ScoreResult score = ChineseScoring.compute(board, komi);
+            this.scoreBlack = score.black();
+            this.scoreWhite = score.white();
+        }
+
+        return new MoveResult(true, consecutivePasses >= 2 ? "Game over. Both players passed." : "Pass accepted");
     }
 
     /**
@@ -121,11 +157,11 @@ public class Room {
     }
 
     public boolean canUndo() {
-        return board.canUndo();
+        return !gameEnded && board.canUndo();
     }
 
     public boolean canRedo() {
-        return board.canRedo();
+        return !gameEnded && board.canRedo();
     }
 
     public record MoveResult(boolean success, String message, BoardStateSnapshot statePushedForUndo) {

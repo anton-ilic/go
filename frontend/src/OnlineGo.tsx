@@ -25,6 +25,10 @@ export type RoomState = {
   board: BoardState;
   canUndo?: boolean;
   canRedo?: boolean;
+  komi?: number;
+  gameEnded?: boolean;
+  scoreBlack?: number;
+  scoreWhite?: number;
 };
 
 type Props = {
@@ -80,6 +84,20 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     white: Number(raw?.white ?? 0),
   }), []);
 
+  const toRoomState = useCallback((data: any, fallback?: RoomState | null): RoomState => ({
+    roomId: data.roomId,
+    turn: data.turn,
+    moveNumber: data.moveNumber,
+    prisoners: toPrisoners(data.prisoners),
+    board: data.board,
+    canUndo: data.canUndo ?? fallback?.canUndo ?? false,
+    canRedo: data.canRedo ?? fallback?.canRedo ?? false,
+    komi: data.komi ?? fallback?.komi,
+    gameEnded: data.gameEnded ?? fallback?.gameEnded ?? false,
+    scoreBlack: data.scoreBlack ?? fallback?.scoreBlack,
+    scoreWhite: data.scoreWhite ?? fallback?.scoreWhite,
+  }), [toPrisoners]);
+
   // --- Create room ---
   useEffect(() => {
     if (phase !== 'creating') return;
@@ -128,15 +146,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
         const res = await fetch(`${API_BASE_URL}/rooms/${roomId}`);
         if (res.ok) {
           const data = await res.json();
-          const state: RoomState = {
-            roomId: data.roomId,
-            turn: data.turn,
-            moveNumber: data.moveNumber,
-            prisoners: toPrisoners(data.prisoners),
-            board: data.board,
-            canUndo: data.canUndo ?? false,
-            canRedo: data.canRedo ?? false,
-          };
+          const state: RoomState = toRoomState(data);
           console.log('Fetched initial state via REST:', state);
           setRoomState(state);
           onBoardState(state.board);
@@ -146,7 +156,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
         console.error('Failed to fetch initial state:', err);
       }
     })();
-  }, [phase, roomId, roomState, onBoardState, onPrisoners, toPrisoners]);
+  }, [phase, roomId, roomState, onBoardState, onPrisoners, toPrisoners, toRoomState]);
 
   // --- Poll for state updates when WebSocket is disconnected ---
   useEffect(() => {
@@ -166,30 +176,14 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
           // Use functional update to avoid stale closure
           setRoomState(currentState => {
             if (!currentState) {
-              const newState: RoomState = {
-                roomId: data.roomId,
-                turn: data.turn,
-                moveNumber: data.moveNumber,
-                prisoners: toPrisoners(data.prisoners),
-                board: data.board,
-                canUndo: data.canUndo ?? false,
-                canRedo: data.canRedo ?? false,
-              };
+              const newState: RoomState = toRoomState(data);
               onBoardState(newState.board);
               onPrisoners(newState.prisoners);
               return newState;
             }
             // Only update if moveNumber changed (opponent made a move)
             if (data.moveNumber !== currentState.moveNumber) {
-              const newState: RoomState = {
-                roomId: data.roomId,
-                turn: data.turn,
-                moveNumber: data.moveNumber,
-                prisoners: toPrisoners(data.prisoners),
-                board: data.board,
-                canUndo: data.canUndo ?? currentState.canUndo,
-                canRedo: data.canRedo ?? currentState.canRedo,
-              };
+              const newState: RoomState = toRoomState(data, currentState);
               console.log('Polled state update:', newState, 'old:', currentState.moveNumber);
               onBoardState(newState.board);
               onPrisoners(newState.prisoners);
@@ -204,7 +198,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     }, 3000); // Poll every 3 seconds (less aggressive to avoid race conditions)
 
     return () => clearInterval(interval);
-  }, [roomId, roomState, onBoardState, onPrisoners, toPrisoners]);
+  }, [roomId, roomState, onBoardState, onPrisoners, toPrisoners, toRoomState]);
 
   // --- Connect WebSocket ---
   useEffect(() => {
@@ -241,15 +235,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
         const data = JSON.parse(event.data);
         console.log('WebSocket message received:', data.type, data);
         if (data.type === 'state') {
-          const state: RoomState = {
-            roomId: data.roomId,
-            turn: data.turn,
-            moveNumber: data.moveNumber,
-            prisoners: toPrisoners(data.prisoners),
-            board: data.board,
-            canUndo: data.canUndo ?? false,
-            canRedo: data.canRedo ?? false,
-          };
+          const state: RoomState = toRoomState(data);
           console.log('Setting room state:', state);
           setRoomState(state);
           onBoardState(state.board);
@@ -258,15 +244,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
           setStatusMessage(data.message);
           // Error messages also include state — update if present
           if (data.board) {
-            const state: RoomState = {
-              roomId: data.roomId,
-              turn: data.turn,
-              moveNumber: data.moveNumber,
-              prisoners: toPrisoners(data.prisoners),
-              board: data.board,
-              canUndo: data.canUndo ?? false,
-              canRedo: data.canRedo ?? false,
-            };
+            const state: RoomState = toRoomState(data);
             setRoomState(state);
             onBoardState(state.board);
             onPrisoners(state.prisoners);
@@ -312,7 +290,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [phase, roomId, onBoardState, onPrisoners, toPrisoners]);
+  }, [phase, roomId, onBoardState, onPrisoners, toPrisoners, toRoomState]);
 
   // --- Move handler (passed up to App for Board clicks) ---
   const handlePlayMove = useCallback(async (x: number, y: number) => {
@@ -369,15 +347,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
       
       // Always update state from response (to get latest moveNumber and board)
       if (data.roomId && data.board) {
-        const newState: RoomState = {
-          roomId: data.roomId,
-          turn: data.turn,
-          moveNumber: data.moveNumber,
-          prisoners: toPrisoners(data.prisoners),
-          board: data.board,
-          canUndo: data.canUndo ?? roomState.canUndo,
-          canRedo: data.canRedo ?? roomState.canRedo,
-        };
+        const newState: RoomState = toRoomState(data, roomState);
         setRoomState(newState);
         onBoardState(newState.board);
         onPrisoners(newState.prisoners);
@@ -409,9 +379,9 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     }
   }, [roomState, onBoardState, onPrisoners, toPrisoners]);
 
-  // Update parent's move handler - enable when we have roomState (works with REST fallback even if WebSocket disconnected)
+  // Update parent's move handler - enable when we have roomState and game not ended
   useEffect(() => {
-    if (roomState) {
+    if (roomState && !roomState.gameEnded) {
       onMoveHandler(handlePlayMove);
     } else {
       onMoveHandler(null);
@@ -456,19 +426,11 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
       const data = await res.json();
       
       if (data.success) {
-        const newState: RoomState = {
-          roomId: data.roomId,
-          turn: data.turn,
-          moveNumber: data.moveNumber,
-          prisoners: toPrisoners(data.prisoners),
-          board: data.board,
-          canUndo: data.canUndo ?? false,
-          canRedo: data.canRedo ?? false,
-        };
+        const newState: RoomState = toRoomState(data);
         setRoomState(newState);
         onBoardState(newState.board);
         onPrisoners(newState.prisoners);
-        setStatusMessage('Turn passed.');
+        setStatusMessage(newState.gameEnded ? 'Game over.' : 'Turn passed.');
         setTimeout(() => setStatusMessage(null), 2000);
       } else {
         setStatusMessage(data.message || 'Pass failed');
@@ -487,15 +449,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
       const res = await fetch(`${API_BASE_URL}/rooms/${roomState.roomId}/undo`, { method: 'POST' });
       const data = await res.json();
       if (data.success && data.board != null) {
-        const newState: RoomState = {
-          roomId: data.roomId,
-          turn: data.turn,
-          moveNumber: data.moveNumber,
-          prisoners: toPrisoners(data.prisoners),
-          board: data.board,
-          canUndo: data.canUndo ?? false,
-          canRedo: data.canRedo ?? false,
-        };
+        const newState: RoomState = toRoomState(data);
         setRoomState(newState);
         onBoardState(newState.board);
         onPrisoners(newState.prisoners);
@@ -517,15 +471,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
       const res = await fetch(`${API_BASE_URL}/rooms/${roomState.roomId}/redo`, { method: 'POST' });
       const data = await res.json();
       if (data.success && data.board != null) {
-        const newState: RoomState = {
-          roomId: data.roomId,
-          turn: data.turn,
-          moveNumber: data.moveNumber,
-          prisoners: toPrisoners(data.prisoners),
-          board: data.board,
-          canUndo: data.canUndo ?? false,
-          canRedo: data.canRedo ?? false,
-        };
+        const newState: RoomState = toRoomState(data);
         setRoomState(newState);
         onBoardState(newState.board);
         onPrisoners(newState.prisoners);
@@ -594,7 +540,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
             </button>
 
             {/* Turn indicator */}
-            {roomState && (
+            {roomState && !roomState.gameEnded && (
               <div className="turn-section">
                 <div className="turn-label">Current turn</div>
                 <div className={`turn-display ${roomState.turn.toLowerCase()}`}>
@@ -604,6 +550,32 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
                 <div className="move-counter">Move #{roomState.moveNumber + 1}</div>
               </div>
             )}
+
+            {/* Game Over - Chinese scoring + Komi */}
+            {roomState?.gameEnded && (
+              <div className="game-over-section">
+                <div className="game-over-title">Game Over</div>
+                <div className="game-over-scores">
+                  <div className="score-line black">
+                    <span className="score-label">Black</span>
+                    <span className="score-value">{typeof roomState.scoreBlack === 'number' ? roomState.scoreBlack.toFixed(1) : '—'}</span>
+                  </div>
+                  <div className="score-line white">
+                    <span className="score-label">White <span className="komi-note">(+{roomState.komi ?? 6.5} komi)</span></span>
+                    <span className="score-value">{typeof roomState.scoreWhite === 'number' ? roomState.scoreWhite.toFixed(1) : '—'}</span>
+                  </div>
+                </div>
+                <div className="game-over-winner">
+                  {typeof roomState.scoreBlack === 'number' && typeof roomState.scoreWhite === 'number' &&
+                    (roomState.scoreBlack > roomState.scoreWhite
+                      ? 'Black wins'
+                      : roomState.scoreWhite > roomState.scoreBlack
+                        ? 'White wins'
+                        : 'Tie')}
+                </div>
+              </div>
+            )}
+
             {!roomState && phase === 'joining' && (
               <div className="turn-section">
                 <div className="turn-label">Connecting to game...</div>
@@ -639,8 +611,8 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
               <div className="room-code-hint">Share this link or code with a friend to join instantly.</div>
             </div>
 
-            {/* Undo / Redo */}
-            {roomState && (
+            {/* Undo / Redo - disabled when game over */}
+            {roomState && !roomState.gameEnded && (
               <div className="undo-redo-section">
                 <button
                   type="button"
@@ -663,8 +635,8 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
               </div>
             )}
 
-            {/* Pass button */}
-            {roomState && (
+            {/* Pass button - hidden when game over */}
+            {roomState && !roomState.gameEnded && (
               <div className="pass-section">
                 <button 
                   className="btn-pass" 

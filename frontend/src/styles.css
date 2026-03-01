@@ -150,6 +150,14 @@ body {
 .board.board-size-9 { background-image: url('/9x9.jpeg'); }
 .board.board-size-19 { background-image: url('/19x19.jpeg'); }
 
+/* Hide CSS grid when using board image (image already has grid) */
+.board.board-size-9 .board-cell::before,
+.board.board-size-9 .board-cell::after,
+.board.board-size-19 .board-cell::before,
+.board.board-size-19 .board-cell::after {
+  display: none;
+}
+
 .board-row {
   flex: 1;
   display: flex;
@@ -769,6 +777,41 @@ body {
 .btn-pass:hover {
   background: #555;
   border-color: #666;
+}
+
+/* Game Over - Chinese scoring */
+.game-over-section {
+  padding: 1rem 0;
+  border-top: 1px solid #444;
+}
+.game-over-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.game-over-scores {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.game-over-scores .score-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0;
+}
+.game-over-scores .score-line.black .score-value { color: #ccc; }
+.game-over-scores .score-line.white .score-value { color: #eee; }
+.game-over-scores .score-label { font-size: 0.9rem; color: #aaa; }
+.game-over-scores .komi-note { font-size: 0.75rem; color: #777; }
+.game-over-winner {
+  margin-top: 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #8f8;
 }
 
 /* Quick rules */
