@@ -1,6 +1,9 @@
 package com.go;
 
 import java.time.Instant;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * A multiplayer Go room. No player identity — anyone with the link can play.
@@ -19,6 +22,13 @@ public class Room {
     private boolean gameEnded;
     private double scoreBlack;
     private double scoreWhite;
+    /** If non-null, game ended by resignation; winner is the opposite color. */
+    private String resignedBy;
+    private String winner;
+    /** Manual territory marks for scoring: key "x,y" -> "BLACK" or "WHITE". Only used when game ended by double-pass. */
+    private final Map<String, String> territoryMarks = new ConcurrentHashMap<>();
+    /** Stones marked as dead for scoring: keys "x,y". Only used when game ended by double-pass. */
+    private final Set<String> deadStones = ConcurrentHashMap.newKeySet();
 
     public Room(String roomId) {
         this(roomId, Board.DEFAULT_BOARD_SIZE, 6.5);
@@ -80,6 +90,12 @@ public class Room {
     public boolean isGameEnded() { return gameEnded; }
     public double getScoreBlack() { return scoreBlack; }
     public double getScoreWhite() { return scoreWhite; }
+    public String getResignedBy() { return resignedBy; }
+    public String getWinner() { return winner; }
+    public Map<String, String> getTerritoryMarks() { return Map.copyOf(territoryMarks); }
+    public Set<String> getDeadStones() { return Set.copyOf(deadStones); }
+    /** True if game ended by double-pass (so territory/dead marking is allowed). */
+    public boolean isScoringPhase() { return gameEnded && resignedBy == null; }
 
     /**
      * Attempts to apply a move. Thread-safe.
@@ -124,12 +140,66 @@ public class Room {
 
         if (consecutivePasses >= 2) {
             gameEnded = true;
-            ChineseScoring.ScoreResult score = ChineseScoring.compute(board, komi);
-            this.scoreBlack = score.black();
-            this.scoreWhite = score.white();
+            recomputeScoresFromMarks();
         }
 
         return new MoveResult(true, consecutivePasses >= 2 ? "Game over. Both players passed." : "Pass accepted");
+    }
+
+    /**
+     * Current player resigns. Game ends; winner is the opposite color.
+     */
+    public synchronized boolean resign() {
+        if (gameEnded) return false;
+        gameEnded = true;
+        resignedBy = turn;
+        winner = "BLACK".equals(turn) ? "WHITE" : "BLACK";
+        updatedAt = Instant.now();
+        return true;
+    }
+
+    /**
+     * Set or clear territory mark at (x,y). Only allowed in scoring phase (game ended by double-pass).
+     * color: "BLACK", "WHITE", or null to clear.
+     */
+    public synchronized boolean setTerritoryMark(int x, int y, String color) {
+        if (!isScoringPhase()) return false;
+        int size = board.getBoardSize();
+        if (x < 0 || x >= size || y < 0 || y >= size) return false;
+        String key = x + "," + y;
+        if (color == null || color.isEmpty()) {
+            territoryMarks.remove(key);
+        } else if ("BLACK".equals(color) || "WHITE".equals(color)) {
+            territoryMarks.put(key, color);
+        } else {
+            return false;
+        }
+        recomputeScoresFromMarks();
+        updatedAt = Instant.now();
+        return true;
+    }
+
+    /**
+     * Toggle dead-stone mark at (x,y). Only allowed in scoring phase.
+     * Point must have a stone (marking it as dead removes it from count and treats as empty for territory).
+     */
+    public synchronized boolean toggleDeadStone(int x, int y) {
+        if (!isScoringPhase()) return false;
+        int size = board.getBoardSize();
+        if (x < 0 || x >= size || y < 0 || y >= size) return false;
+        if (board.getStoneAt(x, y) == Board.EMPTY) return false;
+        String key = x + "," + y;
+        if (deadStones.contains(key)) deadStones.remove(key);
+        else deadStones.add(key);
+        recomputeScoresFromMarks();
+        updatedAt = Instant.now();
+        return true;
+    }
+
+    private void recomputeScoresFromMarks() {
+        ChineseScoring.ScoreResult score = ChineseScoring.compute(board, komi, territoryMarks, deadStones);
+        this.scoreBlack = score.black();
+        this.scoreWhite = score.white();
     }
 
     /**

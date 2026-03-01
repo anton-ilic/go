@@ -58,6 +58,11 @@ public class RoomController {
         body.put("gameEnded", room.isGameEnded());
         body.put("scoreBlack", room.getScoreBlack());
         body.put("scoreWhite", room.getScoreWhite());
+        body.put("resignedBy", room.getResignedBy());
+        body.put("winner", room.getWinner());
+        body.put("territoryMarks", room.getTerritoryMarks());
+        body.put("deadStones", new java.util.ArrayList<>(room.getDeadStones()));
+        body.put("isScoringPhase", room.isScoringPhase());
         body.put("prisoners", toPrisonersDto(room));
         body.put("board", toBoardDto(room));
         body.put("canUndo", room.canUndo());
@@ -150,6 +155,87 @@ public class RoomController {
     }
 
     /**
+     * POST /api/rooms/{roomId}/resign — Current player resigns.
+     */
+    @PostMapping("/{roomId}/resign")
+    public ResponseEntity<?> resign(@PathVariable("roomId") String roomId) {
+        Room room = roomService.getRoom(roomId);
+        if (room == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("success", false, "message", "Room not found"));
+        }
+        boolean did = roomService.resign(roomId);
+        Room updated = roomService.getRoom(roomId);
+        if (!did) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(toRoomStateMap(updated, false, "Game already ended"));
+        }
+        return ResponseEntity.ok(toRoomStateMap(updated, true, updated.getResignedBy() + " resigned. " + updated.getWinner() + " wins."));
+    }
+
+    /**
+     * POST /api/rooms/{roomId}/marks/territory — Set/clear territory mark (scoring phase only).
+     * Body: { "x": int, "y": int, "color": "BLACK"|"WHITE"|null }
+     */
+    @PostMapping("/{roomId}/marks/territory")
+    public ResponseEntity<?> setTerritoryMark(
+            @PathVariable("roomId") String roomId,
+            @RequestBody Map<String, Object> body) {
+        Room room = roomService.getRoom(roomId);
+        if (room == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("success", false, "message", "Room not found"));
+        }
+        Object xObj = body.get("x");
+        Object yObj = body.get("y");
+        if (xObj == null || yObj == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("success", false, "message", "Missing x or y"));
+        }
+        int x = ((Number) xObj).intValue();
+        int y = ((Number) yObj).intValue();
+        String color = body.get("color") != null ? body.get("color").toString() : null;
+        if (color != null && (color.isEmpty() || "null".equalsIgnoreCase(color))) color = null;
+        boolean ok = roomService.setTerritoryMark(roomId, x, y, color);
+        Room updated = roomService.getRoom(roomId);
+        if (!ok) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(toRoomStateMap(updated, false, "Cannot set territory mark (not in scoring phase or invalid)"));
+        }
+        return ResponseEntity.ok(toRoomStateMap(updated, true, "Territory mark updated"));
+    }
+
+    /**
+     * POST /api/rooms/{roomId}/marks/dead — Toggle dead-stone mark (scoring phase only).
+     * Body: { "x": int, "y": int }
+     */
+    @PostMapping("/{roomId}/marks/dead")
+    public ResponseEntity<?> toggleDeadStone(
+            @PathVariable("roomId") String roomId,
+            @RequestBody Map<String, Object> body) {
+        Room room = roomService.getRoom(roomId);
+        if (room == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("success", false, "message", "Room not found"));
+        }
+        Object xObj = body.get("x");
+        Object yObj = body.get("y");
+        if (xObj == null || yObj == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("success", false, "message", "Missing x or y"));
+        }
+        int x = ((Number) xObj).intValue();
+        int y = ((Number) yObj).intValue();
+        boolean ok = roomService.toggleDeadStone(roomId, x, y);
+        Room updated = roomService.getRoom(roomId);
+        if (!ok) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(toRoomStateMap(updated, false, "Cannot toggle dead stone (not in scoring phase or no stone)"));
+        }
+        return ResponseEntity.ok(toRoomStateMap(updated, true, "Dead stone toggled"));
+    }
+
+    /**
      * POST /api/rooms/{roomId}/pass — Pass turn (REST fallback).
      * No body required.
      */
@@ -213,6 +299,11 @@ public class RoomController {
         m.put("gameEnded", room.isGameEnded());
         m.put("scoreBlack", room.getScoreBlack());
         m.put("scoreWhite", room.getScoreWhite());
+        m.put("resignedBy", room.getResignedBy());
+        m.put("winner", room.getWinner());
+        m.put("territoryMarks", room.getTerritoryMarks());
+        m.put("deadStones", new java.util.ArrayList<>(room.getDeadStones()));
+        m.put("isScoringPhase", room.isScoringPhase());
         m.put("prisoners", toPrisonersDto(room));
         m.put("board", toBoardDto(room));
         m.put("canUndo", room.canUndo());

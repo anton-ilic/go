@@ -115,4 +115,28 @@ public class RoomService {
         }
         return did;
     }
+
+    /**
+     * Current player resigns. Game ends; winner is the opposite color.
+     */
+    public boolean resign(String roomId) {
+        Room room = getRoom(roomId);
+        return room != null && room.resign();
+    }
+
+    /**
+     * Set or clear territory mark. Only in scoring phase (game ended by double-pass).
+     */
+    public boolean setTerritoryMark(String roomId, int x, int y, String color) {
+        Room room = getRoom(roomId);
+        return room != null && room.setTerritoryMark(x, y, color);
+    }
+
+    /**
+     * Toggle dead-stone mark at (x,y). Only in scoring phase.
+     */
+    public boolean toggleDeadStone(String roomId, int x, int y) {
+        Room room = getRoom(roomId);
+        return room != null && room.toggleDeadStone(x, y);
+    }
 }

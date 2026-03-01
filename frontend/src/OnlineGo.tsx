@@ -29,7 +29,14 @@ export type RoomState = {
   gameEnded?: boolean;
   scoreBlack?: number;
   scoreWhite?: number;
+  resignedBy?: string | null;
+  winner?: string | null;
+  territoryMarks?: Record<string, string>;
+  deadStones?: string[];
+  isScoringPhase?: boolean;
 };
+
+export type ScoringMarks = { territoryMarks: Record<string, string>; deadStones: string[] } | null;
 
 type Props = {
   roomId: string | null;          // null = "create room" flow, string = "join existing room"
@@ -38,9 +45,10 @@ type Props = {
   onPrisoners: (prisoners: Prisoners) => void;
   onMoveHandler: (handler: ((x: number, y: number) => void) | null) => void;
   onRoomCreated?: (roomId: string) => void;  // Callback when room is created
+  onScoringMarks?: (marks: ScoringMarks) => void;  // Territory/dead marks for board display (scoring phase)
 };
 
-export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoardState, onPrisoners, onMoveHandler, onRoomCreated }) => {
+export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoardState, onPrisoners, onMoveHandler, onRoomCreated, onScoringMarks }) => {
   const [phase, setPhase] = useState<'creating' | 'joining' | 'connected' | 'error'>(
     initialRoomId ? 'joining' : 'creating'
   );
@@ -49,6 +57,8 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [ruleTipIndex, setRuleTipIndex] = useState(0);
+  /** When in scoring phase: 'territory' = mark empty as B/W territory, 'dead' = mark stone as dead. */
+  const [markMode, setMarkMode] = useState<'territory' | 'dead' | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
@@ -96,6 +106,11 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     gameEnded: data.gameEnded ?? fallback?.gameEnded ?? false,
     scoreBlack: data.scoreBlack ?? fallback?.scoreBlack,
     scoreWhite: data.scoreWhite ?? fallback?.scoreWhite,
+    resignedBy: data.resignedBy ?? fallback?.resignedBy ?? null,
+    winner: data.winner ?? fallback?.winner ?? null,
+    territoryMarks: data.territoryMarks ?? fallback?.territoryMarks ?? {},
+    deadStones: Array.isArray(data.deadStones) ? data.deadStones : (fallback?.deadStones ?? []),
+    isScoringPhase: data.isScoringPhase ?? fallback?.isScoringPhase ?? false,
   }), [toPrisoners]);
 
   // --- Create room ---
@@ -379,14 +394,85 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     }
   }, [roomState, onBoardState, onPrisoners, toPrisoners]);
 
-  // Update parent's move handler - enable when we have roomState and game not ended
+  // Push scoring marks to parent for board display
   useEffect(() => {
-    if (roomState && !roomState.gameEnded) {
+    if (!onScoringMarks) return;
+    if (roomState?.isScoringPhase && roomState.territoryMarks !== undefined && roomState.deadStones !== undefined) {
+      onScoringMarks({
+        territoryMarks: roomState.territoryMarks ?? {},
+        deadStones: roomState.deadStones ?? [],
+      });
+    } else {
+      onScoringMarks(null);
+    }
+  }, [roomState?.isScoringPhase, roomState?.territoryMarks, roomState?.deadStones, onScoringMarks]);
+
+  // Update parent's move handler: scoring phase -> mark clicks; playing -> play moves; else null
+  const handleMarkClick = useCallback(async (x: number, y: number) => {
+    if (!roomState?.roomId || !roomState.isScoringPhase || !markMode) return;
+    const size = roomState.board?.boardSize ?? 0;
+    if (x < 0 || x >= size || y < 0 || y >= size) return;
+    const key = `${x},${y}`;
+    const hasStone = roomState.board?.stones?.some(s => s.x === x && s.y === y);
+
+    if (markMode === 'territory') {
+      if (hasStone) return;
+      const current = roomState.territoryMarks?.[key];
+      const next = !current ? 'BLACK' : current === 'BLACK' ? 'WHITE' : null;
+      try {
+        const res = await fetch(`${API_BASE_URL}/rooms/${roomState.roomId}/marks/territory`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ x, y, color: next }),
+        });
+        const data = await res.json();
+        if (data.roomId && data.board) {
+          setRoomState(toRoomState(data, roomState));
+          onBoardState(data.board);
+          onPrisoners(toPrisoners(data.prisoners));
+        }
+        if (res.ok) setStatusMessage(next ? `Marked as ${next}` : 'Territory mark cleared');
+        else setStatusMessage(data.message || 'Failed');
+        setTimeout(() => setStatusMessage(null), 2000);
+      } catch (e) {
+        setStatusMessage('Request failed');
+        setTimeout(() => setStatusMessage(null), 2000);
+      }
+      return;
+    }
+    if (markMode === 'dead') {
+      if (!hasStone) return;
+      try {
+        const res = await fetch(`${API_BASE_URL}/rooms/${roomState.roomId}/marks/dead`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ x, y }),
+        });
+        const data = await res.json();
+        if (data.roomId && data.board) {
+          setRoomState(toRoomState(data, roomState));
+          onBoardState(data.board);
+          onPrisoners(toPrisoners(data.prisoners));
+        }
+        if (res.ok) setStatusMessage('Dead stone toggled');
+        else setStatusMessage(data.message || 'Failed');
+        setTimeout(() => setStatusMessage(null), 2000);
+      } catch (e) {
+        setStatusMessage('Request failed');
+        setTimeout(() => setStatusMessage(null), 2000);
+      }
+    }
+  }, [roomState, markMode, toRoomState, toPrisoners, onBoardState, onPrisoners]);
+
+  useEffect(() => {
+    if (roomState?.isScoringPhase) {
+      onMoveHandler(markMode ? handleMarkClick : null);
+    } else if (roomState && !roomState.gameEnded) {
       onMoveHandler(handlePlayMove);
     } else {
       onMoveHandler(null);
     }
-  }, [roomState, handlePlayMove, onMoveHandler]);
+  }, [roomState, roomState?.isScoringPhase, roomState?.gameEnded, markMode, handleMarkClick, handlePlayMove, onMoveHandler]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -404,6 +490,34 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     }, 5000);
     return () => window.clearInterval(timer);
   }, [ruleTips.length]);
+
+  const handleResign = async () => {
+    if (!roomState?.roomId) return;
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'resign' }));
+      setStatusMessage('Resigning…');
+      setTimeout(() => setStatusMessage(null), 2000);
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE_URL}/rooms/${roomState.roomId}/resign`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success && data.roomId && data.board != null) {
+        const newState = toRoomState(data);
+        setRoomState(newState);
+        onBoardState(newState.board);
+        onPrisoners(newState.prisoners);
+        setStatusMessage(data.message ?? `${newState.resignedBy} resigned. ${newState.winner} wins.`);
+      } else {
+        setStatusMessage(data.message ?? 'Resign failed');
+      }
+      setTimeout(() => setStatusMessage(null), 3000);
+    } catch (err) {
+      setStatusMessage('Resign request failed');
+      setTimeout(() => setStatusMessage(null), 3000);
+    }
+  };
 
   const handlePass = async () => {
     if (!roomState) return;
@@ -551,28 +665,37 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
               </div>
             )}
 
-            {/* Game Over - Chinese scoring + Komi */}
+            {/* Game Over - resign or Chinese scoring + Komi */}
             {roomState?.gameEnded && (
               <div className="game-over-section">
                 <div className="game-over-title">Game Over</div>
-                <div className="game-over-scores">
-                  <div className="score-line black">
-                    <span className="score-label">Black</span>
-                    <span className="score-value">{typeof roomState.scoreBlack === 'number' ? roomState.scoreBlack.toFixed(1) : '—'}</span>
+                {roomState.resignedBy && roomState.winner ? (
+                  <div className="game-over-resign">
+                    <span className="resign-message">{roomState.resignedBy} resigned.</span>
+                    <span className="winner-message">{roomState.winner} wins.</span>
                   </div>
-                  <div className="score-line white">
-                    <span className="score-label">White <span className="komi-note">(+{roomState.komi ?? 6.5} komi)</span></span>
-                    <span className="score-value">{typeof roomState.scoreWhite === 'number' ? roomState.scoreWhite.toFixed(1) : '—'}</span>
-                  </div>
-                </div>
-                <div className="game-over-winner">
-                  {typeof roomState.scoreBlack === 'number' && typeof roomState.scoreWhite === 'number' &&
-                    (roomState.scoreBlack > roomState.scoreWhite
-                      ? 'Black wins'
-                      : roomState.scoreWhite > roomState.scoreBlack
-                        ? 'White wins'
-                        : 'Tie')}
-                </div>
+                ) : (
+                  <>
+                    <div className="game-over-scores">
+                      <div className="score-line black">
+                        <span className="score-label">Black</span>
+                        <span className="score-value">{typeof roomState.scoreBlack === 'number' ? roomState.scoreBlack.toFixed(1) : '—'}</span>
+                      </div>
+                      <div className="score-line white">
+                        <span className="score-label">White <span className="komi-note">(+{roomState.komi ?? 6.5} komi)</span></span>
+                        <span className="score-value">{typeof roomState.scoreWhite === 'number' ? roomState.scoreWhite.toFixed(1) : '—'}</span>
+                      </div>
+                    </div>
+                    <div className="game-over-winner">
+                      {typeof roomState.scoreBlack === 'number' && typeof roomState.scoreWhite === 'number' &&
+                        (roomState.scoreBlack > roomState.scoreWhite
+                          ? 'Black wins'
+                          : roomState.scoreWhite > roomState.scoreBlack
+                            ? 'White wins'
+                            : 'Tie')}
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -635,15 +758,48 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
               </div>
             )}
 
-            {/* Pass button - hidden when game over */}
+            {/* Pass & Resign - hidden when game over */}
             {roomState && !roomState.gameEnded && (
-              <div className="pass-section">
-                <button 
-                  className="btn-pass" 
-                  onClick={handlePass}
-                >
+              <div className="pass-resign-section">
+                <button className="btn-pass" onClick={handlePass}>
                   Pass Turn
                 </button>
+                <button
+                  type="button"
+                  className="btn-resign"
+                  onClick={handleResign}
+                  title="Resign the game"
+                >
+                  Resign
+                </button>
+              </div>
+            )}
+
+            {/* Scoring phase: mark territory or dead stones (contest) */}
+            {roomState?.isScoringPhase && (
+              <div className="scoring-marks-section">
+                <div className="scoring-marks-label">Mark for scoring</div>
+                <div className="scoring-marks-buttons">
+                  <button
+                    type="button"
+                    className={`btn-mark-mode ${markMode === 'territory' ? 'active' : ''}`}
+                    onClick={() => setMarkMode(m => m === 'territory' ? null : 'territory')}
+                  >
+                    Mark territory
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn-mark-mode ${markMode === 'dead' ? 'active' : ''}`}
+                    onClick={() => setMarkMode(m => m === 'dead' ? null : 'dead')}
+                  >
+                    Mark dead / Contest
+                  </button>
+                </div>
+                {markMode && (
+                  <div className="scoring-marks-hint">
+                    {markMode === 'territory' ? 'Click empty points to assign to Black or White (cycle).' : 'Click stones to mark as dead for scoring.'}
+                  </div>
+                )}
               </div>
             )}
 

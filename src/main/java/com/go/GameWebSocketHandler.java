@@ -74,7 +74,16 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         switch (type) {
             case "move" -> handleMove(session, room, json);
             case "pass" -> handlePass(session, room, json);
+            case "resign" -> handleResign(session, room);
             default -> sendError(session, "Unknown message type: " + type);
+        }
+    }
+
+    private void handleResign(WebSocketSession session, Room room) throws IOException {
+        if (room.resign()) {
+            broadcastState(room);
+        } else {
+            sendErrorWithState(session, "Game already ended", room);
         }
     }
 
@@ -161,6 +170,11 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         obj.addProperty("gameEnded", room.isGameEnded());
         obj.addProperty("scoreBlack", room.getScoreBlack());
         obj.addProperty("scoreWhite", room.getScoreWhite());
+        if (room.getResignedBy() != null) obj.addProperty("resignedBy", room.getResignedBy());
+        if (room.getWinner() != null) obj.addProperty("winner", room.getWinner());
+        obj.add("territoryMarks", gson.toJsonTree(room.getTerritoryMarks()));
+        obj.add("deadStones", gson.toJsonTree(new ArrayList<>(room.getDeadStones())));
+        obj.addProperty("isScoringPhase", room.isScoringPhase());
         obj.addProperty("canUndo", room.canUndo());
         obj.addProperty("canRedo", room.canRedo());
         JsonObject prisonersObj = new JsonObject();

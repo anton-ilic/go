@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { BoardState } from '../App';
 
 type Props = {
   board: BoardState;
   onPlayMove: (x: number, y: number) => void;
+  /** Key "x,y" -> "BLACK" | "WHITE" for territory marks (scoring phase). */
+  territoryMarks?: Record<string, string>;
+  /** Keys "x,y" for stones marked as dead (scoring phase). */
+  deadStones?: string[];
 };
 
 /**
@@ -15,8 +19,9 @@ type Props = {
  *
  * Star points (hoshi) are shown on standard positions for 19x19 and 9x9 boards.
  */
-export const Board: React.FC<Props> = ({ board, onPlayMove }) => {
+export const Board: React.FC<Props> = ({ board, onPlayMove, territoryMarks = {}, deadStones = [] }) => {
   const size = board.boardSize;
+  const deadSet = useMemo(() => new Set(deadStones), [deadStones]);
 
   const handleClick = (row: number, col: number) => {
     // Board coordinates use (x, y) with y from bottom; rows here are from top.
@@ -27,6 +32,9 @@ export const Board: React.FC<Props> = ({ board, onPlayMove }) => {
 
   const hasStoneAt = (x: number, y: number) =>
     board.stones.find(s => s.x === x && s.y === y);
+
+  const territoryAt = (x: number, y: number) => territoryMarks[`${x},${y}`];
+  const isDeadAt = (x: number, y: number) => deadSet.has(`${x},${y}`);
 
   // Star point (hoshi) positions for common board sizes
   const starPoints = getStarPoints(size);
@@ -48,6 +56,9 @@ export const Board: React.FC<Props> = ({ board, onPlayMove }) => {
       if (col === 0) classes.push('edge-left');
       if (col === size - 1) classes.push('edge-right');
 
+      const terr = territoryAt(x, y);
+      const dead = stone ? isDeadAt(x, y) : false;
+
       cells.push(
         <div
           key={`${row}-${col}`}
@@ -56,14 +67,21 @@ export const Board: React.FC<Props> = ({ board, onPlayMove }) => {
           onClick={() => handleClick(row, col)}
         >
           {/* Star point dot */}
-          {!stone && isStarPoint(col, row) && (
+          {!stone && isStarPoint(col, row) && !terr && (
             <div className="star-point" />
+          )}
+          {/* Territory mark (empty point marked as B/W territory) */}
+          {!stone && terr && (
+            <div className={`territory-mark ${terr.toLowerCase()}`} title={`Territory: ${terr}`} />
           )}
           {stone && (
             <div
-              className={`stone ${stone.color === 'WHITE' ? 'white' : 'black'}`}
+              className={`stone ${stone.color === 'WHITE' ? 'white' : 'black'}${dead ? ' dead-stone' : ''}`}
               role="img"
-            />
+              title={dead ? 'Marked dead' : undefined}
+            >
+              {dead && <span className="dead-stone-x" aria-hidden>×</span>}
+            </div>
           )}
         </div>
       );

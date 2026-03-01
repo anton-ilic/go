@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Board } from './components/Board';
 import { PuzzleList } from './components/PuzzleList';
-import { OnlineGo } from './OnlineGo';
+import { OnlineGo, type ScoringMarks } from './OnlineGo';
 
 export type Stone = { x: number; y: number; color: 'WHITE' | 'BLACK' };
 
@@ -92,6 +92,7 @@ export const App: React.FC = () => {
   // Board state from online game (pushed up by OnlineGo)
   const [onlineBoardState, setOnlineBoardState] = useState<BoardState | null>(null);
   const [onlinePrisoners, setOnlinePrisoners] = useState<Prisoners>({ black: 0, white: 0 });
+  const [onlineScoringMarks, setOnlineScoringMarks] = useState<ScoringMarks>(null);
   // Use a ref for the move handler to avoid the React useState pitfall where
   // passing a function to a setter is interpreted as a functional update.
   const onlineMoveHandlerRef = useRef<((x: number, y: number) => void) | null>(null);
@@ -196,6 +197,7 @@ export const App: React.FC = () => {
     setOnlinePrisoners({ black: 0, white: 0 });
     onlineMoveHandlerRef.current = null;
     setOnlineRoomId(null);
+    setOnlineScoringMarks(null);
     window.history.replaceState({}, '', '/');
   };
 
@@ -229,7 +231,12 @@ export const App: React.FC = () => {
         {/* Left side: Board */}
         <div className="board-container-left">
           <div className="board-wrapper">
-            <Board board={displayBoardState} onPlayMove={handleBoardMove} />
+            <Board
+              board={displayBoardState}
+              onPlayMove={handleBoardMove}
+              territoryMarks={isOnlineRoom ? (onlineScoringMarks?.territoryMarks) : undefined}
+              deadStones={isOnlineRoom ? (onlineScoringMarks?.deadStones) : undefined}
+            />
           </div>
         </div>
 
@@ -484,6 +491,7 @@ export const App: React.FC = () => {
               onBoardState={setOnlineBoardState}
               onPrisoners={setOnlinePrisoners}
               onMoveHandler={setOnlineMoveHandler}
+              onScoringMarks={setOnlineScoringMarks}
               onRoomCreated={(roomId: string) => {
                 setOnlineRoomId(roomId);
                 setMode('online-room');

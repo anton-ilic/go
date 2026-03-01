@@ -238,6 +238,42 @@ body {
   background: radial-gradient(circle at 35% 35%, #555, #111);
 }
 
+.stone.dead-stone {
+  opacity: 0.55;
+  position: relative;
+}
+.stone.dead-stone .dead-stone-x {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1em;
+  font-weight: 700;
+  color: rgba(255, 80, 80, 0.95);
+  text-shadow: 0 0 2px #000;
+  pointer-events: none;
+}
+
+.territory-mark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 28%;
+  height: 28%;
+  border-radius: 50%;
+  z-index: 1;
+}
+.territory-mark.black {
+  background: #333;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.3);
+}
+.territory-mark.white {
+  background: #ddd;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.3);
+}
+
 /* ========= Puzzle list ========= */
 .puzzle-list {
   list-style: none;
@@ -756,13 +792,16 @@ body {
   border-color: #666;
 }
 
-/* Pass button */
-.pass-section {
+/* Pass & Resign */
+.pass-resign-section {
+  display: flex;
+  gap: 0.5rem;
   padding-top: 0;
 }
-
+.pass-resign-section .btn-pass {
+  flex: 1;
+}
 .btn-pass {
-  width: 100%;
   padding: 0.75rem 1rem;
   background: #444;
   color: #fff;
@@ -773,10 +812,24 @@ body {
   cursor: pointer;
   transition: all 0.2s;
 }
-
 .btn-pass:hover {
   background: #555;
   border-color: #666;
+}
+.btn-resign {
+  padding: 0.75rem 1rem;
+  background: #3a2a2a;
+  color: #e88;
+  border: 1px solid #5a4040;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-resign:hover {
+  background: #4a3535;
+  border-color: #6a5050;
 }
 
 /* Game Over - Chinese scoring */
@@ -812,6 +865,64 @@ body {
   font-size: 1rem;
   font-weight: 600;
   color: #8f8;
+}
+.game-over-resign {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+.game-over-resign .resign-message {
+  font-size: 0.95rem;
+  color: #aaa;
+}
+.game-over-resign .winner-message {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #8f8;
+}
+
+/* Scoring phase: mark territory / dead */
+.scoring-marks-section {
+  border-top: 1px solid #444;
+  padding-top: 0.75rem;
+}
+.scoring-marks-label {
+  font-size: 0.8rem;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.5rem;
+}
+.scoring-marks-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.btn-mark-mode {
+  padding: 0.5rem 0.75rem;
+  background: #333;
+  color: #ccc;
+  border: 1px solid #444;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-mark-mode:hover {
+  background: #404040;
+  color: #fff;
+}
+.btn-mark-mode.active {
+  background: #4a4a6a;
+  border-color: #5a5a8a;
+  color: #fff;
+}
+.scoring-marks-hint {
+  font-size: 0.78rem;
+  color: #888;
+  margin-top: 0.4rem;
+  line-height: 1.35;
 }
 
 /* Quick rules */
