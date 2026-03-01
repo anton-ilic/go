@@ -15,12 +15,21 @@ public class Room {
     private Instant updatedAt;
 
     public Room(String roomId) {
+        this(roomId, Board.DEFAULT_BOARD_SIZE);
+    }
+
+    /** Creates a room with the given board size (9, 11, or 19). */
+    public Room(String roomId, int boardSize) {
         this.roomId = roomId;
-        this.board = new Board();
+        this.board = new Board(boardSize);
         this.board.restart();
         this.turn = "BLACK";
         this.moveNumber = 0;
         this.updatedAt = Instant.now();
+    }
+
+    public int getBoardSize() {
+        return board.getBoardSize();
     }
 
     public String getRoomId() {
@@ -56,7 +65,7 @@ public class Room {
      * Saves current state to undo stack before moving; clears redo stack on success.
      */
     public synchronized MoveResult applyMove(int x, int y) {
-        if (x < 0 || x >= Board.BOARD_SIZE || y < 0 || y >= Board.BOARD_SIZE) {
+        if (x < 0 || x >= board.getBoardSize() || y < 0 || y >= board.getBoardSize()) {
             return new MoveResult(false, "Coordinates out of bounds", null);
         }
 

@@ -75,7 +75,7 @@ export const Board: React.FC<Props> = ({ board, onPlayMove }) => {
     );
   }
 
-  return <div className="board">{rows}</div>;
+  return <div className={`board board-size-${size}`}>{rows}</div>;
 };
 
 /** Returns star point positions as [col, row] pairs (visual coordinates, 0-indexed from top-left). */

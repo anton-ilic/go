@@ -4,6 +4,7 @@ import com.go.Board;
 import com.go.Room;
 import com.go.RoomService;
 import com.go.api.dto.BoardStateDto;
+import com.go.api.dto.CreateRoomRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -24,12 +25,16 @@ public class RoomController {
 
     /**
      * POST /api/rooms — Create a new room.
-     * Returns { roomId }.
+     * Optional body: { "boardSize": 9|11|19, "komi": number, "startingColor": "BLACK"|"WHITE" }.
+     * Returns { roomId, boardSize }.
      */
     @PostMapping
-    public ResponseEntity<Map<String, String>> createRoom() {
-        Room room = roomService.createRoom();
-        return ResponseEntity.ok(Map.of("roomId", room.getRoomId()));
+    public ResponseEntity<Map<String, Object>> createRoom(@RequestBody(required = false) CreateRoomRequest request) {
+        Room room = roomService.createRoom(request);
+        return ResponseEntity.ok(Map.<String, Object>of(
+                "roomId", room.getRoomId(),
+                "boardSize", room.getBoardSize()
+        ));
     }
 
     /**
@@ -45,6 +50,7 @@ public class RoomController {
 
         return ResponseEntity.ok(Map.of(
                 "roomId", room.getRoomId(),
+                "boardSize", room.getBoardSize(),
                 "turn", room.getTurn(),
                 "moveNumber", room.getMoveNumber(),
                 "prisoners", toPrisonersDto(room),
@@ -241,7 +247,7 @@ public class RoomController {
     }
 
     private BoardStateDto toBoardDto(Room room) {
-        int size = Board.BOARD_SIZE;
+        int size = room.getBoard().getBoardSize();
         List<BoardStateDto.StoneDto> stones = new ArrayList<>();
         for (int x = 0; x < size; x++) {
             for (int y = 0; y < size; y++) {

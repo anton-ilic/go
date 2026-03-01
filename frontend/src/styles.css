@@ -142,7 +142,13 @@ body {
   padding: 8px;
   display: flex;
   flex-direction: column;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
+
+.board.board-size-9 { background-image: url('/9x9.jpeg'); }
+.board.board-size-19 { background-image: url('/19x19.jpeg'); }
 
 .board-row {
   flex: 1;
@@ -473,6 +479,38 @@ body {
   outline: none;
   border-color: #555;
 }
+
+.form-group { display: flex; flex-direction: column; gap: 0.5rem; }
+.form-group label { font-weight: 500; color: #fff; font-size: 0.9rem; }
+.form-hint { font-size: 0.8rem; color: #888; }
+.form-error { color: #e66; font-size: 0.9rem; }
+
+.board-size-options, .starting-color-options {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.board-size-btn, .starting-color-btn {
+  padding: 0.5rem 1rem;
+  border: 2px solid #444;
+  border-radius: 8px;
+  background: #1e1e1e;
+  color: #ccc;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.board-size-btn:hover, .starting-color-btn:hover {
+  border-color: #555;
+  color: #fff;
+}
+.board-size-btn.active {
+  border-color: #4a90e2;
+  background: #2a3a4a;
+  color: #fff;
+}
+.starting-color-btn.black.active { border-color: #333; background: #333; color: #fff; }
+.starting-color-btn.white.active { border-color: #ddd; background: #ddd; color: #333; }
 
 .btn-primary {
   padding: 0.875rem 1.5rem;

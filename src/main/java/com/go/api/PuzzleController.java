@@ -52,7 +52,7 @@ public class PuzzleController {
     }
 
     private BoardStateDto buildInitialBoardState(PuzzleRepository.PuzzleData puzzle) {
-        int size = Board.BOARD_SIZE;
+        int size = Board.DEFAULT_BOARD_SIZE;
         List<BoardStateDto.StoneDto> stones = new ArrayList<>();
 
         for (int[] pos : puzzle.initialWhite()) {

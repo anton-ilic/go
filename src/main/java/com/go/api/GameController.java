@@ -64,7 +64,7 @@ public class GameController {
 
         int x = request.x();
         int y = request.y();
-        if (x < 0 || x >= Board.BOARD_SIZE || y < 0 || y >= Board.BOARD_SIZE) {
+        if (x < 0 || x >= Board.DEFAULT_BOARD_SIZE || y < 0 || y >= Board.DEFAULT_BOARD_SIZE) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(new MoveResponse(gameId, "INVALID_MOVE", "Coordinates out of bounds.", null));
         }
@@ -163,7 +163,7 @@ public class GameController {
     }
 
     private GameStateDto toGameState(Level level) {
-        int size = Board.BOARD_SIZE;
+        int size = Board.DEFAULT_BOARD_SIZE;
         List<BoardStateDto.StoneDto> stones = new ArrayList<>();
 
         for (int x = 0; x < size; x++) {

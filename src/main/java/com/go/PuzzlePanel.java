@@ -27,11 +27,11 @@ public class PuzzlePanel extends JPanel implements KeyListener {
 
                 if (puzzleSolved) return;
 
-                int cellWidth = getWidth() / Board.BOARD_SIZE;
-                int cellHeight = getHeight() / Board.BOARD_SIZE;
+                int cellWidth = getWidth() / Board.DEFAULT_BOARD_SIZE;
+                int cellHeight = getHeight() / Board.DEFAULT_BOARD_SIZE;
 
                 int x = e.getX() / cellWidth;
-                int y = Board.BOARD_SIZE - 1 - (e.getY() / cellHeight);
+                int y = Board.DEFAULT_BOARD_SIZE - 1 - (e.getY() / cellHeight);
 
                 boolean correct = level.playMove(x, y, isWhite);
                 repaint();
@@ -113,8 +113,8 @@ public class PuzzlePanel extends JPanel implements KeyListener {
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
 
-        int cellWidth = getWidth() / Board.BOARD_SIZE;
-        int cellHeight = getHeight() / Board.BOARD_SIZE;
+        int cellWidth = getWidth() / Board.DEFAULT_BOARD_SIZE;
+        int cellHeight = getHeight() / Board.DEFAULT_BOARD_SIZE;
         // Stone size for 11x11 board - larger for better visibility
         int stoneRadius = (int) (Math.min(cellWidth, cellHeight) * 0.48);
         // Ensure minimum stone size for visibility
@@ -128,7 +128,7 @@ public class PuzzlePanel extends JPanel implements KeyListener {
         g2d.setColor(new Color(0, 0, 0, 180));
         g2d.setStroke(new BasicStroke(1.5f));
         
-        for (int i = 0; i <= Board.BOARD_SIZE; i++) {
+        for (int i = 0; i <= Board.DEFAULT_BOARD_SIZE; i++) {
             int x = i * cellWidth;
             int y = i * cellHeight;
             g2d.drawLine(x, 0, x, getHeight());
@@ -148,12 +148,12 @@ public class PuzzlePanel extends JPanel implements KeyListener {
         }
 
         // Draw stones with shadows and better appearance
-        for (int x = 0; x < Board.BOARD_SIZE; x++) {
-            for (int y = 0; y < Board.BOARD_SIZE; y++) {
+        for (int x = 0; x < Board.DEFAULT_BOARD_SIZE; x++) {
+            for (int y = 0; y < Board.DEFAULT_BOARD_SIZE; y++) {
                 int stone = level.getStoneAt(x, y);
                 if (stone == Board.WHITE || stone == Board.BLACK) {
                     int centerX = x * cellWidth + cellWidth / 2;
-                    int centerY = (Board.BOARD_SIZE - 1 - y) * cellHeight + cellHeight / 2;
+                    int centerY = (Board.DEFAULT_BOARD_SIZE - 1 - y) * cellHeight + cellHeight / 2;
                     
                     // Draw shadow
                     g2d.setColor(stone == Board.WHITE ? new Color(200, 200, 200) : new Color(20, 20, 20));

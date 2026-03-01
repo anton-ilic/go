@@ -60,8 +60,8 @@ public class GamePanel extends JPanel {
                 int gridY = (int) Math.round((float) relativeY / cellSize);
                 
                 // Clamp to valid range (0 to BOARD_SIZE-1) - this ensures edges are included
-                gridX = Math.max(0, Math.min(Board.BOARD_SIZE - 1, gridX));
-                gridY = Math.max(0, Math.min(Board.BOARD_SIZE - 1, gridY));
+                gridX = Math.max(0, Math.min(Board.DEFAULT_BOARD_SIZE - 1, gridX));
+                gridY = Math.max(0, Math.min(Board.DEFAULT_BOARD_SIZE - 1, gridY));
                 
                 // Calculate actual intersection position
                 int intersectionX = gridStartX + gridX * cellSize;
@@ -73,8 +73,8 @@ public class GamePanel extends JPanel {
                 double maxDistance = cellSize * 0.7; // 70% tolerance for easier clicking
                 
                 // For edge intersections, be very permissive to allow corner placement
-                boolean isEdge = (gridX == 0 || gridX == Board.BOARD_SIZE - 1 || 
-                                gridY == 0 || gridY == Board.BOARD_SIZE - 1);
+                boolean isEdge = (gridX == 0 || gridX == Board.DEFAULT_BOARD_SIZE - 1 || 
+                                gridY == 0 || gridY == Board.DEFAULT_BOARD_SIZE - 1);
                 if (isEdge) {
                     maxDistance = cellSize * 1.0; // 100% tolerance for edges - very permissive
                 }
@@ -86,7 +86,7 @@ public class GamePanel extends JPanel {
                 // Convert to board coordinates
                 // Board uses (0,0) as bottom-left, screen uses (0,0) as top-left
                 // gridY is screen Y (0 = top), need to convert to board Y (0 = bottom)
-                int boardY = Board.BOARD_SIZE - 1 - gridY;
+                int boardY = Board.DEFAULT_BOARD_SIZE - 1 - gridY;
                 
                 board.play(gridX, boardY); 
                 board.print();
@@ -190,14 +190,14 @@ public class GamePanel extends JPanel {
         // Calculate cell size based on 10 cells between 11 intersections
         // Use the smaller dimension to ensure square grid
         int gridDimension = Math.min(gridAreaWidth, gridAreaHeight);
-        cellSize = gridDimension / (Board.BOARD_SIZE - 1);
+        cellSize = gridDimension / (Board.DEFAULT_BOARD_SIZE - 1);
         
         // Ensure cellSize is at least 1
         if (cellSize < 1) cellSize = 1;
         
         // Calculate total grid span (from first intersection at 0 to last at 10)
-        int totalGridWidth = cellSize * (Board.BOARD_SIZE - 1);
-        int totalGridHeight = cellSize * (Board.BOARD_SIZE - 1);
+        int totalGridWidth = cellSize * (Board.DEFAULT_BOARD_SIZE - 1);
+        int totalGridHeight = cellSize * (Board.DEFAULT_BOARD_SIZE - 1);
         
         // Position grid to span nearly the full board - start closer to edges
         // This ensures intersections 0 and 10 are near the actual board edges
@@ -253,8 +253,8 @@ public class GamePanel extends JPanel {
         // Ensure minimum stone size for visibility
         if (stoneRadius < 6) stoneRadius = 6;
         
-        for (int boardX = 0; boardX < Board.BOARD_SIZE; boardX++) {
-            for (int boardY = 0; boardY < Board.BOARD_SIZE; boardY++) {
+        for (int boardX = 0; boardX < Board.DEFAULT_BOARD_SIZE; boardX++) {
+            for (int boardY = 0; boardY < Board.DEFAULT_BOARD_SIZE; boardY++) {
                 int stone = board.getStoneAt(boardX, boardY);
                 if (stone == Board.WHITE || stone == Board.BLACK) {
                     // Calculate intersection position (exact center of intersection)
@@ -262,7 +262,7 @@ public class GamePanel extends JPanel {
                     // Screen coordinates: (0,0) is top-left
                     // So we need to flip the y-axis
                     int intersectionX = gridStartX + boardX * cellSize;
-                    int intersectionY = gridStartY + (Board.BOARD_SIZE - 1 - boardY) * cellSize;
+                    int intersectionY = gridStartY + (Board.DEFAULT_BOARD_SIZE - 1 - boardY) * cellSize;
                     
                     // Draw stone centered on intersection
                     int stoneX = intersectionX - stoneRadius;

@@ -30,7 +30,12 @@ public class Board {
     public static final int WHITE = 1;
     public static final int BLACK = 2;
     public static final int EMPTY = 0;
-    public static final int BOARD_SIZE = 11;
+    /** Default size when not specified (e.g. puzzles). */
+    public static final int DEFAULT_BOARD_SIZE = 11;
+    /** Supported sizes for online play. */
+    public static final int[] SUPPORTED_SIZES = { 9, 11, 19 };
+
+    private final int boardSize;
     private boolean moved;
     private boolean toggle = false; // toggle value, true: White, false: Black
     private int blackPrisoners; // white stones captured by black
@@ -40,15 +45,25 @@ public class Board {
     private final Deque<BoardStateSnapshot> redoStack = new ArrayDeque<>();
 
     public Board() {
-        this.layout = new int[BOARD_SIZE][BOARD_SIZE];
-        this.previous_layout = new int[BOARD_SIZE][BOARD_SIZE];
-        this.previous_layout_temp = new int[BOARD_SIZE][BOARD_SIZE];
+        this(DEFAULT_BOARD_SIZE);
+    }
+
+    /** Creates a board of the given size (e.g. 9, 11, 19). */
+    public Board(int boardSize) {
+        this.boardSize = boardSize;
+        this.layout = new int[boardSize][boardSize];
+        this.previous_layout = new int[boardSize][boardSize];
+        this.previous_layout_temp = new int[boardSize][boardSize];
         this.initialWhite = new ArrayList<>();
         this.initialBlack = new ArrayList<>();
         this.moved = false;
         this.blackPrisoners = 0;
         this.whitePrisoners = 0;
         emptyBoard();
+    }
+
+    public int getBoardSize() {
+        return boardSize;
     }
 
     public void setIntialStones(List<int[]> whiteStones, List<int[]> blackStone) {
@@ -68,8 +83,8 @@ public class Board {
     }
 
     private void emptyLayout(int[][] current){
-        for (int i = 0; i < BOARD_SIZE; i++) {
-            for (int j = 0; j < BOARD_SIZE; j++) {
+        for (int i = 0; i < boardSize; i++) {
+            for (int j = 0; j < boardSize; j++) {
                 current[i][j] = EMPTY;
             }
         }
@@ -109,7 +124,7 @@ public class Board {
         int capturedStones = 0;
         for (int[] neighbor : getNeighbors(x, y)) {
             int nx = neighbor[0], ny = neighbor[1];
-            if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE) {
+            if (nx >= 0 && nx < boardSize && ny >= 0 && ny < boardSize) {
                 if (layout[nx][ny] != EMPTY && layout[nx][ny] != layout[x][y]) {
                     capturedStones += captureGroup(nx, ny);
                 }
@@ -220,8 +235,8 @@ public class Board {
     }
 
     private boolean ko_violation(){
-        for (int i = 0; i < BOARD_SIZE; i++) {
-            for (int j = 0; j < BOARD_SIZE; j++) {
+        for (int i = 0; i < boardSize; i++) {
+            for (int j = 0; j < boardSize; j++) {
                 if (previous_layout[i][j] != layout[i][j]){
                     return false;
                 }
@@ -231,8 +246,8 @@ public class Board {
     }
 
     private void copy_layout( int[][] victim,  int[][] target){
-        for (int i = 0; i < BOARD_SIZE; i++) {
-            for (int j = 0; j < BOARD_SIZE; j++) {
+        for (int i = 0; i < boardSize; i++) {
+            for (int j = 0; j < boardSize; j++) {
                 victim[i][j] = target[i][j];
             }
         }
@@ -247,8 +262,8 @@ public class Board {
     }
 
     public void print() {
-        for (int i = BOARD_SIZE - 1; i >= 0; i--) {
-            for (int j = 0; j < BOARD_SIZE; j++) {
+        for (int i = boardSize - 1; i >= 0; i--) {
+            for (int j = 0; j < boardSize; j++) {
 
                 if (layout[j][i] == WHITE) {
                     System.out.print("W ");
@@ -264,7 +279,7 @@ public class Board {
 
     private boolean hasLiberties(int x, int y) {
         int color = layout[x][y];
-        boolean[][] visited = new boolean[BOARD_SIZE][BOARD_SIZE];
+        boolean[][] visited = new boolean[boardSize][boardSize];
         Queue<int[]> queue = new LinkedList<>();
         queue.add(new int[] { x, y });
         visited[x][y] = true;
@@ -298,7 +313,7 @@ public class Board {
             neighbors.add(new int[] { x - 1, y });
         }
 
-        if (x + 1 < BOARD_SIZE) {
+        if (x + 1 < boardSize) {
             neighbors.add(new int[] { x + 1, y });
         }
 
@@ -306,7 +321,7 @@ public class Board {
             neighbors.add(new int[] { x, y - 1 });
         }
 
-        if (y + 1 < BOARD_SIZE) {
+        if (y + 1 < boardSize) {
             neighbors.add(new int[] { x, y + 1 });
         }
 
@@ -315,7 +330,7 @@ public class Board {
 
     private int captureGroup(int x, int y) {
         int color = layout[x][y];
-        boolean[][] visited = new boolean[BOARD_SIZE][BOARD_SIZE];
+        boolean[][] visited = new boolean[boardSize][boardSize];
         Queue<int[]> queue = new LinkedList<>(); // store FIFO nodes
         queue.add(new int[] { x, y });
         visited[x][y] = true;
@@ -330,7 +345,7 @@ public class Board {
 
             for (int[] neighbor : getNeighbors(px, py)) {
                 int nx = neighbor[0], ny = neighbor[1];
-                if (nx < 0 || nx >= BOARD_SIZE || ny < 0 || ny >= BOARD_SIZE) {
+                if (nx < 0 || nx >= boardSize || ny < 0 || ny >= boardSize) {
                     continue;
                 }
 

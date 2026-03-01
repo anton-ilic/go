@@ -1,5 +1,6 @@
 package com.go;
 
+import com.go.api.dto.CreateRoomRequest;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
@@ -39,12 +40,25 @@ public class RoomService {
 
     /**
      * Creates a new room with an empty board.
+     * @param request optional settings (boardSize 9/11/19, komi, startingColor); null safe.
      */
-    public Room createRoom() {
+    public Room createRoom(CreateRoomRequest request) {
         String roomId = generateRoomId();
-        Room room = new Room(roomId);
+        int boardSize = Board.DEFAULT_BOARD_SIZE;
+        if (request != null && request.boardSize() != null) {
+            int s = request.boardSize();
+            if (s == 9 || s == 11 || s == 19) {
+                boardSize = s;
+            }
+        }
+        Room room = new Room(roomId, boardSize);
         rooms.put(roomId, room);
         return room;
+    }
+
+    /** Creates a new room with default settings. */
+    public Room createRoom() {
+        return createRoom(null);
     }
 
     /**

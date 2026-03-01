@@ -42,7 +42,7 @@ type MoveResponse = {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
-type Mode = 'menu' | 'puzzles' | 'puzzle-list' | 'online-menu' | 'online-create' | 'online-join' | 'online-room';
+type Mode = 'menu' | 'puzzles' | 'puzzle-list' | 'online-menu' | 'online-create-settings' | 'online-join' | 'online-room';
 
 export const App: React.FC = () => {
   const [puzzles, setPuzzles] = useState<PuzzleSummary[]>([]);
@@ -81,6 +81,13 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('popstate', checkUrl);
   }, [onlineRoomId]);
   const [joinRoomCode, setJoinRoomCode] = useState('');
+
+  // Create room settings (used when opening "Create Room" flow)
+  const [createBoardSize, setCreateBoardSize] = useState<9 | 11 | 19>(11);
+  const [createKomi, setCreateKomi] = useState<string>('6.5');
+  const [createStartingColor, setCreateStartingColor] = useState<'BLACK' | 'WHITE'>('BLACK');
+  const [createRoomLoading, setCreateRoomLoading] = useState(false);
+  const [createRoomError, setCreateRoomError] = useState<string | null>(null);
 
   // Board state from online game (pushed up by OnlineGo)
   const [onlineBoardState, setOnlineBoardState] = useState<BoardState | null>(null);
@@ -288,7 +295,8 @@ export const App: React.FC = () => {
                   className="play-option-card"
                   onClick={() => {
                     setOnlineRoomId(null);
-                    setMode('online-create');
+                    setMode('online-create-settings');
+                    setCreateRoomError(null);
                   }}
                 >
                   <div className="play-option-icon">⚡</div>
@@ -304,6 +312,105 @@ export const App: React.FC = () => {
                     <div className="play-option-subtitle">Enter a room code to join</div>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* === Create Room Settings === */}
+          {mode === 'online-create-settings' && (
+            <div className="online-form-container">
+              <button className="back-button" onClick={() => setMode('online-menu')}>← Back</button>
+              <div className="form-card create-room-settings">
+                <h2>Create Room</h2>
+                <p className="form-subtitle">Choose game settings, then create the room</p>
+                <form
+                  className="online-form"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setCreateRoomError(null);
+                    setCreateRoomLoading(true);
+                    try {
+                      const res = await fetch(`${API_BASE_URL}/rooms`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          boardSize: createBoardSize,
+                          komi: createKomi === '' ? undefined : parseFloat(createKomi),
+                          startingColor: createStartingColor,
+                        }),
+                      });
+                      if (!res.ok) {
+                        const text = await res.text();
+                        throw new Error(text || `Failed to create room: ${res.status}`);
+                      }
+                      const data = await res.json();
+                      const newRoomId = data.roomId as string;
+                      setOnlineRoomId(newRoomId);
+                      setMode('online-room');
+                      window.history.replaceState({}, '', `/r/${newRoomId}`);
+                    } catch (err) {
+                      setCreateRoomError((err as Error).message);
+                    } finally {
+                      setCreateRoomLoading(false);
+                    }
+                  }}
+                >
+                  <div className="form-group">
+                    <label>Board size</label>
+                    <div className="board-size-options">
+                      {([9, 11, 19] as const).map((size) => (
+                        <button
+                          key={size}
+                          type="button"
+                          className={`board-size-btn ${createBoardSize === size ? 'active' : ''}`}
+                          onClick={() => setCreateBoardSize(size)}
+                        >
+                          {size}×{size}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="create-komi">Komi</label>
+                    <input
+                      id="create-komi"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="e.g. 6.5"
+                      value={createKomi}
+                      onChange={(e) => setCreateKomi(e.target.value)}
+                    />
+                    <span className="form-hint">White gets extra points to balance first move. Typical: 6.5–7.5.</span>
+                  </div>
+                  <div className="form-group">
+                    <label>Starting color</label>
+                    <div className="starting-color-options">
+                      <button
+                        type="button"
+                        className={`starting-color-btn black ${createStartingColor === 'BLACK' ? 'active' : ''}`}
+                        onClick={() => setCreateStartingColor('BLACK')}
+                      >
+                        Black
+                      </button>
+                      <button
+                        type="button"
+                        className={`starting-color-btn white ${createStartingColor === 'WHITE' ? 'active' : ''}`}
+                        onClick={() => setCreateStartingColor('WHITE')}
+                      >
+                        White
+                      </button>
+                    </div>
+                    <span className="form-hint">Who plays the first move. (Placeholder — not yet applied.)</span>
+                  </div>
+                  {createRoomError && <div className="form-error">{createRoomError}</div>}
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={createRoomLoading}
+                  >
+                    {createRoomLoading ? 'Creating…' : 'Create Room'}
+                  </button>
+                </form>
               </div>
             </div>
           )}
@@ -369,8 +476,8 @@ export const App: React.FC = () => {
             </div>
           )}
 
-          {/* === Online Room (Create or Join via link) === */}
-          {(mode === 'online-create' || mode === 'online-room') && (
+          {/* === Online Room (after creating or joining via link) === */}
+          {mode === 'online-room' && onlineRoomId && (
             <OnlineGo
               roomId={onlineRoomId}
               onBack={goToMainMenu}
