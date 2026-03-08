@@ -17,6 +17,22 @@ function getWsBaseUrl(): string {
   return `${protocol}//${url.host}`;
 }
 
+/** Rulebook content split into pages for the medieval book. */
+const RULEBOOK_PAGES: { title: string; body: string }[][] = [
+  [
+    { title: 'Objective', body: 'Surround territory and capture opponent stones. At the end, you score points for your stones on the board plus empty points fully surrounded by your color. White gets extra points (komi) to balance Black\'s first move.' },
+    { title: 'Capturing', body: 'A group of stones with no empty adjacent points (no liberties) is captured and removed from the board. Place a stone to remove the last liberty of an opponent group to capture it.' },
+  ],
+  [
+    { title: 'Ko rule', body: 'You cannot immediately recapture to recreate the exact previous board position. You must play elsewhere first, then you may recapture if the position is legal.' },
+    { title: 'Passing', body: 'On your turn you may pass instead of placing a stone. When both players pass in a row, the game ends and scores are counted.' },
+  ],
+  [
+    { title: 'Komi', body: 'White gets extra points (typically 6.5 or 7) to compensate for Black moving first. This app uses Chinese scoring: stones on board + surrounded empty points + komi for White.' },
+    { title: 'After the game', body: 'When both players pass, you can mark territory (empty points as Black or White) and mark dead stones for scoring. Resign anytime to concede.' },
+  ],
+];
+
 export type RoomState = {
   roomId: string;
   turn: 'BLACK' | 'WHITE';
@@ -59,6 +75,9 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
   /** When in scoring phase: 'territory' = mark empty as B/W territory, 'dead' = mark stone as dead. */
   const [markMode, setMarkMode] = useState<'territory' | 'dead' | null>(null);
   const [showRulebook, setShowRulebook] = useState(false);
+  const [rulebookPage, setRulebookPage] = useState(0);
+  const [rulebookFlip, setRulebookFlip] = useState<'none' | 'out' | 'in'>('none');
+  const [rulebookDirection, setRulebookDirection] = useState<'next' | 'prev'>('next');
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
@@ -364,7 +383,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
         
         // Show user-friendly error
         if (errorMsg.includes('Illegal move')) {
-          setStatusMessage('⚠ Illegal move (suicide/ko rule)');
+          setStatusMessage('⚠ Illegal move');
         } else if (errorMsg.includes('out of bounds')) {
           setStatusMessage('⚠ Invalid position');
         } else {
@@ -784,7 +803,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
             <button
               type="button"
               className="btn-view-rules"
-              onClick={() => setShowRulebook(true)}
+              onClick={() => { setRulebookPage(0); setRulebookFlip('none'); setShowRulebook(true); }}
             >
               View Rules
             </button>
@@ -801,7 +820,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
           aria-modal="true"
           aria-label="Go rules"
         >
-          <div className="rulebook-modal" onClick={e => e.stopPropagation()}>
+          <div className="rulebook-modal rulebook-book" onClick={e => e.stopPropagation()}>
             <button
               type="button"
               className="rulebook-close"
@@ -810,38 +829,71 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
             >
               ×
             </button>
-            <h2 className="rulebook-title">Go Rules</h2>
-            <div className="rulebook-content">
-              <section className="rulebook-section">
-                <h3>Objective</h3>
-                <p>Surround territory and capture opponent stones. At the end, you score points for your stones on the board plus empty points fully surrounded by your color. White gets extra points (komi) to balance Black’s first move.</p>
-              </section>
-              <section className="rulebook-section">
-                <h3>Capturing</h3>
-                <p>A group of stones with no empty adjacent points (no liberties) is captured and removed from the board. Place a stone to remove the last liberty of an opponent group to capture it.</p>
-              </section>
-              <section className="rulebook-section">
-                <h3>Ko rule</h3>
-                <p>You cannot immediately recapture to recreate the exact previous board position. You must play elsewhere first, then you may recapture if the position is legal.</p>
-              </section>
-              <section className="rulebook-section">
-                <h3>Passing</h3>
-                <p>On your turn you may pass instead of placing a stone. When both players pass in a row, the game ends and scores are counted.</p>
-              </section>
-              <section className="rulebook-section">
-                <h3>Komi</h3>
-                <p>White gets extra points (typically 6.5 or 7) to compensate for Black moving first. This app uses Chinese scoring: stones on board + surrounded empty points + komi for White.</p>
-              </section>
-              <section className="rulebook-section">
-                <h3>After the game</h3>
-                <p>When both players pass, you can mark territory (empty points as Black or White) and mark dead stones for scoring. Resign anytime to concede.</p>
-              </section>
+            <div className="rulebook-spine" aria-hidden="true" />
+            <div className="rulebook-spread">
+              <div className="rulebook-page-container">
+                <div
+                  className={`rulebook-page ${rulebookFlip !== 'none' ? `rulebook-flip-${rulebookFlip} rulebook-flip-${rulebookDirection}` : ''}`}
+                  onAnimationEnd={() => {
+                    if (rulebookFlip === 'out') {
+                      setRulebookPage(p => (rulebookDirection === 'next' ? Math.min(p + 1, RULEBOOK_PAGES.length - 1) : Math.max(p - 1, 0)));
+                      setRulebookFlip('in');
+                    } else if (rulebookFlip === 'in') {
+                      setRulebookFlip('none');
+                    }
+                  }}
+                >
+                  <div className="rulebook-page-inner">
+                    <h2 className="rulebook-title">Go Rules</h2>
+                    <div className="rulebook-content">
+                      {RULEBOOK_PAGES[rulebookPage].map((section, i) => (
+                        <section key={i} className="rulebook-section">
+                          <h3>{section.title}</h3>
+                          <p>{section.body}</p>
+                        </section>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <nav className="rulebook-nav" aria-label="Rulebook pages">
+                <button
+                  type="button"
+                  className="rulebook-nav-btn"
+                  disabled={rulebookPage === 0 || rulebookFlip !== 'none'}
+                  onClick={() => {
+                    if (rulebookPage > 0 && rulebookFlip === 'none') {
+                      setRulebookDirection('prev');
+                      setRulebookFlip('out');
+                    }
+                  }}
+                  aria-label="Previous page"
+                >
+                  ‹ Prev
+                </button>
+                <span className="rulebook-page-indicator">
+                  Page {rulebookPage + 1} of {RULEBOOK_PAGES.length}
+                </span>
+                <button
+                  type="button"
+                  className="rulebook-nav-btn"
+                  disabled={rulebookPage === RULEBOOK_PAGES.length - 1 || rulebookFlip !== 'none'}
+                  onClick={() => {
+                    if (rulebookPage < RULEBOOK_PAGES.length - 1 && rulebookFlip === 'none') {
+                      setRulebookDirection('next');
+                      setRulebookFlip('out');
+                    }
+                  }}
+                  aria-label="Next page"
+                >
+                  Next ›
+                </button>
+              </nav>
             </div>
           </div>
         </div>
       )}
 
-      {/* Status toast */}
       {statusMessage && (
         <div className={`status-toast ${statusMessage.includes('Copied') ? 'success' : ''}`}>
           {statusMessage}
