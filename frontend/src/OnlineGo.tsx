@@ -232,14 +232,18 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
   useEffect(() => {
     if (phase !== 'joining' || !roomId) return;
 
-    // Construct WebSocket URL. Use same host as page when API is relative so Vite proxy (dev) or same host (prod) is used.
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = API_BASE_URL.startsWith('/')
-      ? `${wsProtocol}//${window.location.host}/ws/game/${roomId}`
-      : `${getWsBaseUrl()}/ws/game/${roomId}`;
-    console.log('Connecting to WebSocket:', wsUrl, '(API_BASE_URL:', API_BASE_URL, ')');
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    // Connect directly to backend (no Vite proxy) to avoid EPIPE and flaky proxy behaviour. Same host as page so origin matches backend's setAllowedOriginPatterns("*").
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const wsBase = API_BASE_URL.startsWith('/')
+      ? (isLocal ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:8080` : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`)
+      : getWsBaseUrl();
+    const wsUrl = `${wsBase}/ws/game/${roomId}`;
+
+    // Short delay so backend has the room ready after create (avoids race where WS connects before room is in cache)
+    const connectTimeoutId = window.setTimeout(() => {
+      console.log('Connecting to WebSocket:', wsUrl, '(API_BASE_URL:', API_BASE_URL, ')');
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
     ws.onopen = () => {
       console.log('WebSocket connected to room:', roomId);
@@ -280,6 +284,14 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
         return;
       }
       const currentPhase = phaseRef.current;
+      // Server sent an error reason (e.g. "Room not found") — don't reconnect, show error
+      if (event.reason) {
+        setError(`Game server closed the connection: ${event.reason}`);
+        setStatusMessage(event.reason);
+        setPhase('error');
+        return;
+      }
+      // Unexpected close (no reason): only reconnect if we were connected, and after a short delay to avoid thrashing
       if (currentPhase === 'connected' || currentPhase === 'joining') {
         if (!event.wasClean || (event.code !== 1000 && event.code !== 1003)) {
           setStatusMessage('Reconnecting…');
@@ -295,16 +307,22 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
 
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
-      const errorMsg = `Failed to connect to game server. Make sure the backend is running on port 8080.`;
+      const errorMsg = API_BASE_URL.startsWith('/')
+        ? `Failed to connect to the game server (trying ${wsUrl}). Start the backend from the project root: mvn spring-boot:run (default port 8080). If you use another port, set VITE_API_BASE_URL in frontend/.env.`
+        : `Failed to connect to the game server at ${getWsBaseUrl()} (trying ${wsUrl}). Check that the backend is running.`;
       setError(errorMsg);
       setStatusMessage(errorMsg);
       // onclose will fire after this
     };
+    }, 150); // delay so room is ready on backend after create
 
     return () => {
+      clearTimeout(connectTimeoutId);
       intentionalCloseRef.current = true;
-      ws.close();
-      wsRef.current = null;
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
@@ -901,4 +919,4 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
       )}
     </div>
   );
-};
+}
