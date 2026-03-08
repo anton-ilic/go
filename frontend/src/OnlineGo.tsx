@@ -155,10 +155,11 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
   useEffect(() => {
     if (phase !== 'joining' || !roomId || roomState) return;
 
-    // Fetch initial state while WebSocket is connecting
+    let cancelled = false;
     (async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/rooms/${roomId}`);
+        if (cancelled) return;
         if (res.ok) {
           const data = await res.json();
           const state: RoomState = toRoomState(data);
@@ -166,11 +167,22 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
           setRoomState(state);
           onBoardState(state.board);
           onPrisoners(state.prisoners);
+        } else {
+          const data = await res.json().catch(() => ({}));
+          const message = (data && typeof data.error === 'string') ? data.error : 'Room not found';
+          setError(res.status === 404
+            ? 'Room not found. It may have expired or the server was restarted.'
+            : message);
+          setPhase('error');
         }
       } catch (err) {
+        if (cancelled) return;
         console.error('Failed to fetch initial state:', err);
+        setError('Cannot reach the game server. Is the backend running on port 8080?');
+        setPhase('error');
       }
     })();
+    return () => { cancelled = true; };
   }, [phase, roomId, roomState, onBoardState, onPrisoners, toPrisoners, toRoomState]);
 
   // --- Poll for state updates when WebSocket is disconnected ---
@@ -644,8 +656,8 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
         </div>
       )}
 
-      {/* Game sidebar - show when we have a roomId */}
-      {roomId && (
+      {/* Game sidebar - show when we have a roomId and not in error (e.g. room not found) */}
+      {roomId && phase !== 'error' && (
         <div className="game-info-sidebar">
           <div className="game-info-card">
             {/* Back button */}

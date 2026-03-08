@@ -19,3 +19,23 @@ CREATE TABLE IF NOT EXISTS board_state_stack (
 
 CREATE INDEX IF NOT EXISTS idx_board_state_stack_entity ON board_state_stack (entity_type, entity_id, stack_type);
 
+-- Game rooms (persisted so they survive restarts).
+-- SQLite: INTEGER for game_ended (0/1). For Postgres use BOOLEAN.
+CREATE TABLE IF NOT EXISTS rooms (
+    room_id TEXT PRIMARY KEY,
+    board_size INTEGER NOT NULL,
+    komi REAL NOT NULL,
+    turn TEXT NOT NULL,
+    move_number INTEGER NOT NULL,
+    consecutive_passes INTEGER NOT NULL,
+    game_ended INTEGER NOT NULL,
+    score_black REAL NOT NULL,
+    score_white REAL NOT NULL,
+    resigned_by TEXT,
+    winner TEXT,
+    territory_marks_json TEXT,
+    dead_stones_json TEXT,
+    board_state_json TEXT NOT NULL,
+    updated_at TEXT
+);
+

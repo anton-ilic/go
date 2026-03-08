@@ -100,7 +100,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void handlePass(WebSocketSession session, Room room, JsonObject json) throws IOException {
-        Room.MoveResult result = room.pass();
+        Room.MoveResult result = roomService.pass(room.getRoomId());
 
         if (result.success()) {
             broadcastState(room);

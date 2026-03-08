@@ -241,27 +241,17 @@ public class RoomController {
      */
     @PostMapping("/{roomId}/pass")
     public ResponseEntity<?> passTurn(@PathVariable("roomId") String roomId) {
+        Room.MoveResult result = roomService.pass(roomId);
         Room room = roomService.getRoom(roomId);
         if (room == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("error", "Room not found"));
+                    .body(Map.of("success", false, "message", "Room not found"));
         }
-
-        try {
-            Room.MoveResult result = room.pass();
-
-            if (result.success()) {
-                return ResponseEntity.ok(toRoomStateMap(room, true, result.message()));
-            } else {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(toRoomStateMap(room, false, result.message()));
-            }
-        } catch (Exception e) {
+        if (result.success()) {
+            return ResponseEntity.ok(toRoomStateMap(room, true, result.message()));
+        } else {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of(
-                            "success", false,
-                            "message", "Error: " + e.getMessage()
-                    ));
+                    .body(toRoomStateMap(room, false, result.message()));
         }
     }
 

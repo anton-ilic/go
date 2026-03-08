@@ -6,6 +6,8 @@ import org.springframework.stereotype.Repository;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -96,5 +98,28 @@ public class BoardStateStackRepository {
         } catch (SQLException e) {
             throw new RuntimeException("Failed to clear board state stack", e);
         }
+    }
+
+    /**
+     * Returns all states for a stack in push order (oldest first).
+     * Used when loading a room from DB so the Board's undo/redo stacks can be restored.
+     */
+    public List<BoardStateSnapshot> listAll(String entityType, String entityId, String stackType) {
+        String sql = "SELECT state_json FROM board_state_stack WHERE entity_type = ? AND entity_id = ? AND stack_type = ? ORDER BY id ASC";
+        List<BoardStateSnapshot> list = new ArrayList<>();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, entityType);
+            ps.setString(2, entityId);
+            ps.setString(3, stackType);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    list.add(BoardStateSnapshot.fromJson(rs.getString("state_json")));
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to list board state stack", e);
+        }
+        return list;
     }
 }

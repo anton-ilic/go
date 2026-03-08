@@ -54,6 +54,31 @@ public class Room {
         this.updatedAt = Instant.now();
     }
 
+    /**
+     * Creates a room from persisted state (used when loading from DB).
+     * Undo/redo stacks are not restored here; they remain in board_state_stack.
+     */
+    public Room(String roomId, int boardSize, double komi, String boardStateJson,
+                String turn, int moveNumber, int consecutivePasses, boolean gameEnded,
+                double scoreBlack, double scoreWhite, String resignedBy, String winner,
+                Map<String, String> territoryMarks, Set<String> deadStones) {
+        this.roomId = roomId;
+        this.komi = komi;
+        this.board = new Board(boardSize);
+        this.board.restoreState(BoardStateSnapshot.fromJson(boardStateJson));
+        this.turn = turn != null ? turn : "BLACK";
+        this.moveNumber = moveNumber;
+        this.consecutivePasses = consecutivePasses;
+        this.gameEnded = gameEnded;
+        this.scoreBlack = scoreBlack;
+        this.scoreWhite = scoreWhite;
+        this.resignedBy = resignedBy;
+        this.winner = winner;
+        this.updatedAt = Instant.now();
+        if (territoryMarks != null) this.territoryMarks.putAll(territoryMarks);
+        if (deadStones != null) this.deadStones.addAll(deadStones);
+    }
+
     public int getBoardSize() {
         return board.getBoardSize();
     }
@@ -72,6 +97,10 @@ public class Room {
 
     public int getMoveNumber() {
         return moveNumber;
+    }
+
+    public int getConsecutivePasses() {
+        return consecutivePasses;
     }
 
     public Instant getUpdatedAt() {

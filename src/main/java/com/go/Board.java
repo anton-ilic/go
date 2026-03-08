@@ -223,6 +223,31 @@ public class Board {
         return !undoStack.isEmpty();
     }
 
+    /**
+     * Loads the undo stack from persistence (oldest first; last in list is top of stack).
+     * Clears the current undo stack and fills it so undo() works after a room is loaded from DB.
+     */
+    public void loadUndoStack(java.util.List<BoardStateSnapshot> snapshots) {
+        undoStack.clear();
+        if (snapshots != null) {
+            for (BoardStateSnapshot s : snapshots) {
+                undoStack.addLast(s);
+            }
+        }
+    }
+
+    /**
+     * Loads the redo stack from persistence (oldest first; last in list is top of stack).
+     */
+    public void loadRedoStack(java.util.List<BoardStateSnapshot> snapshots) {
+        redoStack.clear();
+        if (snapshots != null) {
+            for (BoardStateSnapshot s : snapshots) {
+                redoStack.addLast(s);
+            }
+        }
+    }
+
     public boolean canRedo() {
         return !redoStack.isEmpty();
     }
