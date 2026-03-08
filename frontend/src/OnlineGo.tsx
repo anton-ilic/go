@@ -56,12 +56,13 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
   const [roomState, setRoomState] = useState<RoomState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [ruleTipIndex, setRuleTipIndex] = useState(0);
   /** When in scoring phase: 'territory' = mark empty as B/W territory, 'dead' = mark stone as dead. */
   const [markMode, setMarkMode] = useState<'territory' | 'dead' | null>(null);
+  const [showRulebook, setShowRulebook] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const intentionalCloseRef = useRef(false);
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
 
@@ -69,25 +70,6 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     if (!roomId) return null;
     return `${window.location.origin}/r/${roomId}`;
   }, [roomId]);
-
-  const ruleTips = useMemo(() => ([
-    {
-      title: 'Ko rule',
-      text: 'You cannot immediately recapture to recreate the exact previous board position. Play elsewhere first.',
-    },
-    {
-      title: 'Komi',
-      text: 'White gets extra points (komi) to balance Black moving first. Typical value is around 6.5 to 7.5.',
-    },
-    {
-      title: 'Passing',
-      text: 'Pass when no profitable move remains. The game usually ends after two consecutive passes.',
-    },
-    {
-      title: 'Capturing',
-      text: 'A group with no liberties is captured and removed from the board.',
-    },
-  ]), []);
 
   const toPrisoners = useCallback((raw: any): Prisoners => ({
     black: Number(raw?.black ?? 0),
@@ -231,22 +213,11 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
   useEffect(() => {
     if (phase !== 'joining' || !roomId) return;
 
-    // Construct WebSocket URL
-    // In dev, connect directly to backend (8080), in prod use same host as page
-    let wsUrl: string;
-    if (API_BASE_URL.startsWith('/')) {
-      // Development: API_BASE_URL is relative, so connect directly to backend
-      const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      if (isDev) {
-        wsUrl = `ws://localhost:8080/ws/game/${roomId}`;
-      } else {
-        // Production: use same host as page
-        wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/game/${roomId}`;
-      }
-    } else {
-      // API_BASE_URL is absolute, derive WebSocket URL from it
-      wsUrl = `${getWsBaseUrl()}/ws/game/${roomId}`;
-    }
+    // Construct WebSocket URL. Use same host as page when API is relative so Vite proxy (dev) or same host (prod) is used.
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = API_BASE_URL.startsWith('/')
+      ? `${wsProtocol}//${window.location.host}/ws/game/${roomId}`
+      : `${getWsBaseUrl()}/ws/game/${roomId}`;
     console.log('Connecting to WebSocket:', wsUrl, '(API_BASE_URL:', API_BASE_URL, ')');
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -285,18 +256,19 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
 
     ws.onclose = (event) => {
       console.log('WebSocket closed:', event.code, event.reason, 'wasClean:', event.wasClean);
-      // Try to reconnect after a short delay
+      if (intentionalCloseRef.current) {
+        intentionalCloseRef.current = false;
+        return;
+      }
       const currentPhase = phaseRef.current;
       if (currentPhase === 'connected' || currentPhase === 'joining') {
-        if (!event.wasClean && event.code !== 1000) {
-          // Connection was closed unexpectedly
-          setStatusMessage(`Connection lost (code: ${event.code}). Reconnecting...`);
-          setTimeout(() => setStatusMessage(null), 3000);
+        if (!event.wasClean || (event.code !== 1000 && event.code !== 1003)) {
+          setStatusMessage('Reconnecting…');
+          setTimeout(() => setStatusMessage(null), 4000);
         }
         reconnectTimeoutRef.current = window.setTimeout(() => {
           if (wsRef.current === ws && phaseRef.current !== 'error') {
-            console.log('Attempting to reconnect...');
-            setPhase('joining'); // triggers reconnect
+            setPhase('joining');
           }
         }, 2000);
       }
@@ -311,10 +283,12 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     };
 
     return () => {
+      intentionalCloseRef.current = true;
       ws.close();
       wsRef.current = null;
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
     };
   }, [phase, roomId, onBoardState, onPrisoners, toPrisoners, toRoomState]);
@@ -494,14 +468,6 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
       onMoveHandler(null);
     };
   }, [onBoardState, onPrisoners, onMoveHandler]);
-
-  // Rotate Go rule tips for lightweight in-app guidance.
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setRuleTipIndex((prev) => (prev + 1) % ruleTips.length);
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, [ruleTips.length]);
 
   const handleResign = async () => {
     if (!roomState?.roomId) return;
@@ -815,10 +781,61 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
               </div>
             )}
 
-            <div className="quick-rules">
-              <div className="quick-rules-title">Game essentials</div>
-              <div className="quick-rule-topic">{ruleTips[ruleTipIndex].title}</div>
-              <div className="quick-rule-item">{ruleTips[ruleTipIndex].text}</div>
+            <button
+              type="button"
+              className="btn-view-rules"
+              onClick={() => setShowRulebook(true)}
+            >
+              View Rules
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Rulebook modal */}
+      {showRulebook && (
+        <div
+          className="rulebook-overlay"
+          onClick={() => setShowRulebook(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Go rules"
+        >
+          <div className="rulebook-modal" onClick={e => e.stopPropagation()}>
+            <button
+              type="button"
+              className="rulebook-close"
+              onClick={() => setShowRulebook(false)}
+              aria-label="Close rules"
+            >
+              ×
+            </button>
+            <h2 className="rulebook-title">Go Rules</h2>
+            <div className="rulebook-content">
+              <section className="rulebook-section">
+                <h3>Objective</h3>
+                <p>Surround territory and capture opponent stones. At the end, you score points for your stones on the board plus empty points fully surrounded by your color. White gets extra points (komi) to balance Black’s first move.</p>
+              </section>
+              <section className="rulebook-section">
+                <h3>Capturing</h3>
+                <p>A group of stones with no empty adjacent points (no liberties) is captured and removed from the board. Place a stone to remove the last liberty of an opponent group to capture it.</p>
+              </section>
+              <section className="rulebook-section">
+                <h3>Ko rule</h3>
+                <p>You cannot immediately recapture to recreate the exact previous board position. You must play elsewhere first, then you may recapture if the position is legal.</p>
+              </section>
+              <section className="rulebook-section">
+                <h3>Passing</h3>
+                <p>On your turn you may pass instead of placing a stone. When both players pass in a row, the game ends and scores are counted.</p>
+              </section>
+              <section className="rulebook-section">
+                <h3>Komi</h3>
+                <p>White gets extra points (typically 6.5 or 7) to compensate for Black moving first. This app uses Chinese scoring: stones on board + surrounded empty points + komi for White.</p>
+              </section>
+              <section className="rulebook-section">
+                <h3>After the game</h3>
+                <p>When both players pass, you can mark territory (empty points as Black or White) and mark dead stones for scoring. Resign anytime to concede.</p>
+              </section>
             </div>
           </div>
         </div>
