@@ -17,6 +17,22 @@ function getWsBaseUrl(): string {
   return `${protocol}//${url.host}`;
 }
 
+/** Rulebook content split into pages for the medieval book. */
+const RULEBOOK_PAGES: { title: string; body: string }[][] = [
+  [
+    { title: 'Objective', body: 'Surround territory and capture opponent stones. At the end, you score points for your stones on the board plus empty points fully surrounded by your color. White gets extra points (komi) to balance Black\'s first move.' },
+    { title: 'Capturing', body: 'A group of stones with no empty adjacent points (no liberties) is captured and removed from the board. Place a stone to remove the last liberty of an opponent group to capture it.' },
+  ],
+  [
+    { title: 'Ko rule', body: 'You cannot immediately recapture to recreate the exact previous board position. You must play elsewhere first, then you may recapture if the position is legal.' },
+    { title: 'Passing', body: 'On your turn you may pass instead of placing a stone. When both players pass in a row, the game ends and scores are counted.' },
+  ],
+  [
+    { title: 'Komi', body: 'White gets extra points (typically 6.5 or 7) to compensate for Black moving first. This app uses Chinese scoring: stones on board + surrounded empty points + komi for White.' },
+    { title: 'After the game', body: 'When both players pass, you can mark territory (empty points as Black or White) and mark dead stones for scoring. Resign anytime to concede.' },
+  ],
+];
+
 export type RoomState = {
   roomId: string;
   turn: 'BLACK' | 'WHITE';
@@ -56,12 +72,16 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
   const [roomState, setRoomState] = useState<RoomState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [ruleTipIndex, setRuleTipIndex] = useState(0);
   /** When in scoring phase: 'territory' = mark empty as B/W territory, 'dead' = mark stone as dead. */
   const [markMode, setMarkMode] = useState<'territory' | 'dead' | null>(null);
+  const [showRulebook, setShowRulebook] = useState(false);
+  const [rulebookPage, setRulebookPage] = useState(0);
+  const [rulebookFlip, setRulebookFlip] = useState<'none' | 'out' | 'in'>('none');
+  const [rulebookDirection, setRulebookDirection] = useState<'next' | 'prev'>('next');
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const intentionalCloseRef = useRef(false);
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
 
@@ -69,25 +89,6 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     if (!roomId) return null;
     return `${window.location.origin}/r/${roomId}`;
   }, [roomId]);
-
-  const ruleTips = useMemo(() => ([
-    {
-      title: 'Ko rule',
-      text: 'You cannot immediately recapture to recreate the exact previous board position. Play elsewhere first.',
-    },
-    {
-      title: 'Komi',
-      text: 'White gets extra points (komi) to balance Black moving first. Typical value is around 6.5 to 7.5.',
-    },
-    {
-      title: 'Passing',
-      text: 'Pass when no profitable move remains. The game usually ends after two consecutive passes.',
-    },
-    {
-      title: 'Capturing',
-      text: 'A group with no liberties is captured and removed from the board.',
-    },
-  ]), []);
 
   const toPrisoners = useCallback((raw: any): Prisoners => ({
     black: Number(raw?.black ?? 0),
@@ -231,25 +232,18 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
   useEffect(() => {
     if (phase !== 'joining' || !roomId) return;
 
-    // Construct WebSocket URL
-    // In dev, connect directly to backend (8080), in prod use same host as page
-    let wsUrl: string;
-    if (API_BASE_URL.startsWith('/')) {
-      // Development: API_BASE_URL is relative, so connect directly to backend
-      const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      if (isDev) {
-        wsUrl = `ws://localhost:8080/ws/game/${roomId}`;
-      } else {
-        // Production: use same host as page
-        wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/game/${roomId}`;
-      }
-    } else {
-      // API_BASE_URL is absolute, derive WebSocket URL from it
-      wsUrl = `${getWsBaseUrl()}/ws/game/${roomId}`;
-    }
-    console.log('Connecting to WebSocket:', wsUrl, '(API_BASE_URL:', API_BASE_URL, ')');
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    // Connect directly to backend (no Vite proxy) to avoid EPIPE and flaky proxy behaviour. Same host as page so origin matches backend's setAllowedOriginPatterns("*").
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const wsBase = API_BASE_URL.startsWith('/')
+      ? (isLocal ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:8080` : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`)
+      : getWsBaseUrl();
+    const wsUrl = `${wsBase}/ws/game/${roomId}`;
+
+    // Short delay so backend has the room ready after create (avoids race where WS connects before room is in cache)
+    const connectTimeoutId = window.setTimeout(() => {
+      console.log('Connecting to WebSocket:', wsUrl, '(API_BASE_URL:', API_BASE_URL, ')');
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
     ws.onopen = () => {
       console.log('WebSocket connected to room:', roomId);
@@ -285,18 +279,27 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
 
     ws.onclose = (event) => {
       console.log('WebSocket closed:', event.code, event.reason, 'wasClean:', event.wasClean);
-      // Try to reconnect after a short delay
+      if (intentionalCloseRef.current) {
+        intentionalCloseRef.current = false;
+        return;
+      }
       const currentPhase = phaseRef.current;
+      // Server sent an error reason (e.g. "Room not found") — don't reconnect, show error
+      if (event.reason) {
+        setError(`Game server closed the connection: ${event.reason}`);
+        setStatusMessage(event.reason);
+        setPhase('error');
+        return;
+      }
+      // Unexpected close (no reason): only reconnect if we were connected, and after a short delay to avoid thrashing
       if (currentPhase === 'connected' || currentPhase === 'joining') {
-        if (!event.wasClean && event.code !== 1000) {
-          // Connection was closed unexpectedly
-          setStatusMessage(`Connection lost (code: ${event.code}). Reconnecting...`);
-          setTimeout(() => setStatusMessage(null), 3000);
+        if (!event.wasClean || (event.code !== 1000 && event.code !== 1003)) {
+          setStatusMessage('Reconnecting…');
+          setTimeout(() => setStatusMessage(null), 4000);
         }
         reconnectTimeoutRef.current = window.setTimeout(() => {
           if (wsRef.current === ws && phaseRef.current !== 'error') {
-            console.log('Attempting to reconnect...');
-            setPhase('joining'); // triggers reconnect
+            setPhase('joining');
           }
         }, 2000);
       }
@@ -304,17 +307,25 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
 
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
-      const errorMsg = `Failed to connect to game server. Make sure the backend is running on port 8080.`;
+      const errorMsg = API_BASE_URL.startsWith('/')
+        ? `Failed to connect to the game server (trying ${wsUrl}). Start the backend from the project root: mvn spring-boot:run (default port 8080). If you use another port, set VITE_API_BASE_URL in frontend/.env.`
+        : `Failed to connect to the game server at ${getWsBaseUrl()} (trying ${wsUrl}). Check that the backend is running.`;
       setError(errorMsg);
       setStatusMessage(errorMsg);
       // onclose will fire after this
     };
+    }, 150); // delay so room is ready on backend after create
 
     return () => {
-      ws.close();
-      wsRef.current = null;
+      clearTimeout(connectTimeoutId);
+      intentionalCloseRef.current = true;
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
     };
   }, [phase, roomId, onBoardState, onPrisoners, toPrisoners, toRoomState]);
@@ -390,7 +401,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
         
         // Show user-friendly error
         if (errorMsg.includes('Illegal move')) {
-          setStatusMessage('⚠ Illegal move (suicide/ko rule)');
+          setStatusMessage('⚠ Illegal move');
         } else if (errorMsg.includes('out of bounds')) {
           setStatusMessage('⚠ Invalid position');
         } else {
@@ -494,14 +505,6 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
       onMoveHandler(null);
     };
   }, [onBoardState, onPrisoners, onMoveHandler]);
-
-  // Rotate Go rule tips for lightweight in-app guidance.
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setRuleTipIndex((prev) => (prev + 1) % ruleTips.length);
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, [ruleTips.length]);
 
   const handleResign = async () => {
     if (!roomState?.roomId) return;
@@ -815,16 +818,100 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
               </div>
             )}
 
-            <div className="quick-rules">
-              <div className="quick-rules-title">Game essentials</div>
-              <div className="quick-rule-topic">{ruleTips[ruleTipIndex].title}</div>
-              <div className="quick-rule-item">{ruleTips[ruleTipIndex].text}</div>
+            <button
+              type="button"
+              className="btn-view-rules"
+              onClick={() => { setRulebookPage(0); setRulebookFlip('none'); setShowRulebook(true); }}
+            >
+              View Rules
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Rulebook modal */}
+      {showRulebook && (
+        <div
+          className="rulebook-overlay"
+          onClick={() => setShowRulebook(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Go rules"
+        >
+          <div className="rulebook-modal rulebook-book" onClick={e => e.stopPropagation()}>
+            <button
+              type="button"
+              className="rulebook-close"
+              onClick={() => setShowRulebook(false)}
+              aria-label="Close rules"
+            >
+              ×
+            </button>
+            <div className="rulebook-spine" aria-hidden="true" />
+            <div className="rulebook-spread">
+              <div className="rulebook-page-container">
+                <div
+                  className={`rulebook-page ${rulebookFlip !== 'none' ? `rulebook-flip-${rulebookFlip} rulebook-flip-${rulebookDirection}` : ''}`}
+                  onAnimationEnd={() => {
+                    if (rulebookFlip === 'out') {
+                      setRulebookPage(p => (rulebookDirection === 'next' ? Math.min(p + 1, RULEBOOK_PAGES.length - 1) : Math.max(p - 1, 0)));
+                      setRulebookFlip('in');
+                    } else if (rulebookFlip === 'in') {
+                      setRulebookFlip('none');
+                    }
+                  }}
+                >
+                  <div className="rulebook-page-inner">
+                    <h2 className="rulebook-title">Go Rules</h2>
+                    <div className="rulebook-content">
+                      {RULEBOOK_PAGES[rulebookPage].map((section, i) => (
+                        <section key={i} className="rulebook-section">
+                          <h3>{section.title}</h3>
+                          <p>{section.body}</p>
+                        </section>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <nav className="rulebook-nav" aria-label="Rulebook pages">
+                <button
+                  type="button"
+                  className="rulebook-nav-btn"
+                  disabled={rulebookPage === 0 || rulebookFlip !== 'none'}
+                  onClick={() => {
+                    if (rulebookPage > 0 && rulebookFlip === 'none') {
+                      setRulebookDirection('prev');
+                      setRulebookFlip('out');
+                    }
+                  }}
+                  aria-label="Previous page"
+                >
+                  ‹ Prev
+                </button>
+                <span className="rulebook-page-indicator">
+                  Page {rulebookPage + 1} of {RULEBOOK_PAGES.length}
+                </span>
+                <button
+                  type="button"
+                  className="rulebook-nav-btn"
+                  disabled={rulebookPage === RULEBOOK_PAGES.length - 1 || rulebookFlip !== 'none'}
+                  onClick={() => {
+                    if (rulebookPage < RULEBOOK_PAGES.length - 1 && rulebookFlip === 'none') {
+                      setRulebookDirection('next');
+                      setRulebookFlip('out');
+                    }
+                  }}
+                  aria-label="Next page"
+                >
+                  Next ›
+                </button>
+              </nav>
             </div>
           </div>
         </div>
       )}
 
-      {/* Status toast */}
       {statusMessage && (
         <div className={`status-toast ${statusMessage.includes('Copied') ? 'success' : ''}`}>
           {statusMessage}
@@ -832,4 +919,4 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
       )}
     </div>
   );
-};
+}

@@ -33,12 +33,14 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         String roomId = extractRoomId(session);
         if (roomId == null) {
+            org.slf4j.LoggerFactory.getLogger(GameWebSocketHandler.class).warn("WebSocket connection rejected: could not extract roomId from path {}", session.getUri());
             closeQuietly(session, CloseStatus.BAD_DATA);
             return;
         }
 
         Room room = roomService.getRoom(roomId);
         if (room == null) {
+            org.slf4j.LoggerFactory.getLogger(GameWebSocketHandler.class).warn("WebSocket connection rejected: room not found {}", roomId);
             sendErrorQuietly(session, "Room not found: " + roomId);
             closeQuietly(session, CloseStatus.BAD_DATA);
             return;

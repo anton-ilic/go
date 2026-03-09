@@ -255,6 +255,14 @@ body {
   pointer-events: none;
 }
 
+/* Scoring phase: stones not marked dead are "safely" counted — show a ring */
+.stone.safely-black {
+  box-shadow: 1px 2px 4px rgba(0, 0, 0, 0.5), 0 0 0 2px rgba(255, 220, 150, 0.85);
+}
+.stone.safely-white {
+  box-shadow: 1px 2px 4px rgba(0, 0, 0, 0.5), 0 0 0 2px rgba(80, 140, 200, 0.75);
+}
+
 .territory-mark {
   position: absolute;
   top: 50%;
@@ -919,31 +927,232 @@ body {
   line-height: 1.35;
 }
 
-/* Quick rules */
-.quick-rules {
-  border-top: 1px solid #444;
-  padding-top: 0.95rem;
-}
-
-.quick-rules-title {
-  font-size: 0.82rem;
-  color: #a4a4a4;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 0.45rem;
-}
-
-.quick-rule-topic {
+/* View Rules button (in-game sidebar) */
+.btn-view-rules {
+  width: 100%;
+  margin-top: 0.95rem;
+  padding: 0.6rem 1rem;
+  background: #2a2a2a;
+  color: #b0b0b0;
+  border: 1px solid #444;
+  border-radius: 8px;
   font-size: 0.9rem;
-  font-weight: 600;
-  color: #f2f2f2;
-  margin-bottom: 0.25rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.btn-view-rules:hover {
+  background: #353535;
+  color: #e0e0e0;
 }
 
-.quick-rule-item {
-  font-size: 0.82rem;
-  color: #cfcfcf;
-  line-height: 1.45;
+/* Rulebook modal — medieval book */
+.rulebook-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1.5rem;
+}
+
+.rulebook-modal {
+  position: relative;
+  background: #252525;
+  border: 1px solid #444;
+  border-radius: 12px;
+  max-width: 420px;
+  max-height: 85vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* Medieval book: leather cover + spine */
+.rulebook-modal.rulebook-book {
+  max-width: 440px;
+  background: linear-gradient(145deg, #3d2914 0%, #2c1a0a 40%, #1f1408 100%);
+  border: 3px solid #5c3d1a;
+  border-radius: 4px 12px 12px 4px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    4px 0 12px rgba(0, 0, 0, 0.5),
+    0 10px 40px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: row;
+  padding: 0;
+}
+
+.rulebook-spine {
+  width: 14px;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, #1a1006 0%, #2c1a0a 50%, #1a1006 100%);
+  border-radius: 4px 0 0 4px;
+  box-shadow: inset -2px 0 8px rgba(0, 0, 0, 0.5);
+}
+
+.rulebook-spread {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.75rem 1rem 1rem;
+}
+
+.rulebook-page-container {
+  perspective: 1200px;
+  flex: 1;
+  min-height: 200px;
+  overflow: hidden;
+  position: relative;
+}
+
+.rulebook-page {
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  transform-style: preserve-3d;
+  transform-origin: left center;
+  backface-visibility: hidden;
+}
+
+.rulebook-page-inner {
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  background: linear-gradient(180deg, #f4ecd8 0%, #e8dfc8 8%, #ddd4bc 100%);
+  border: 1px solid #c4b896;
+  border-radius: 0 6px 6px 0;
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.06);
+  padding: 0.75rem 1rem 1rem;
+  overflow-y: auto;
+}
+
+/* 3D page turn */
+.rulebook-page.rulebook-flip-out.rulebook-flip-next {
+  animation: rulebook-flip-out-next 0.45s ease-in-out forwards;
+}
+.rulebook-page.rulebook-flip-in.rulebook-flip-next {
+  animation: rulebook-flip-in-next 0.45s ease-in-out forwards;
+}
+.rulebook-page.rulebook-flip-out.rulebook-flip-prev {
+  animation: rulebook-flip-out-prev 0.45s ease-in-out forwards;
+}
+.rulebook-page.rulebook-flip-in.rulebook-flip-prev {
+  animation: rulebook-flip-in-prev 0.45s ease-in-out forwards;
+}
+
+@keyframes rulebook-flip-out-next {
+  from { transform: rotateY(0); }
+  to { transform: rotateY(-180deg); }
+}
+@keyframes rulebook-flip-in-next {
+  from { transform: rotateY(180deg); }
+  to { transform: rotateY(0); }
+}
+@keyframes rulebook-flip-out-prev {
+  from { transform: rotateY(0); }
+  to { transform: rotateY(180deg); }
+}
+@keyframes rulebook-flip-in-prev {
+  from { transform: rotateY(-180deg); }
+  to { transform: rotateY(0); }
+}
+
+.rulebook-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #c9a959;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  z-index: 2;
+}
+.rulebook-close:hover {
+  color: #f0e0a0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.rulebook-title {
+  margin: 0 0 0.5rem;
+  padding-right: 2rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #2c1a0a;
+  letter-spacing: 0.02em;
+}
+
+.rulebook-content {
+  padding: 0;
+  overflow-y: auto;
+}
+
+.rulebook-section {
+  margin-bottom: 0.85rem;
+}
+.rulebook-section:last-child {
+  margin-bottom: 0;
+}
+.rulebook-section h3 {
+  margin: 0 0 0.3rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #3d2914;
+}
+.rulebook-section p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #4a3728;
+  line-height: 1.55;
+}
+
+/* Page nav */
+.rulebook-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(201, 169, 89, 0.3);
+}
+
+.rulebook-nav-btn {
+  padding: 0.4rem 0.65rem;
+  font-size: 0.85rem;
+  color: #c9a959;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(201, 169, 89, 0.4);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.rulebook-nav-btn:hover:not(:disabled) {
+  color: #f0e0a0;
+  background: rgba(0, 0, 0, 0.4);
+  border-color: rgba(201, 169, 89, 0.6);
+}
+.rulebook-nav-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.rulebook-page-indicator {
+  font-size: 0.8rem;
+  color: #8b7355;
+  font-family: Georgia, serif;
 }
 
 /* Room loading / error */

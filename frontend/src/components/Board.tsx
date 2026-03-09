@@ -58,6 +58,8 @@ export const Board: React.FC<Props> = ({ board, onPlayMove, territoryMarks = {},
 
       const terr = territoryAt(x, y);
       const dead = stone ? isDeadAt(x, y) : false;
+      const inScoring = Object.keys(territoryMarks).length > 0 || deadStones.length > 0;
+      const safelyAlive = stone && !dead && inScoring;
 
       cells.push(
         <div
@@ -76,9 +78,9 @@ export const Board: React.FC<Props> = ({ board, onPlayMove, territoryMarks = {},
           )}
           {stone && (
             <div
-              className={`stone ${stone.color === 'WHITE' ? 'white' : 'black'}${dead ? ' dead-stone' : ''}`}
+              className={`stone ${stone.color === 'WHITE' ? 'white' : 'black'}${dead ? ' dead-stone' : ''}${safelyAlive ? ` safely-${stone.color === 'WHITE' ? 'white' : 'black'}` : ''}`}
               role="img"
-              title={dead ? 'Marked dead' : undefined}
+              title={dead ? 'Marked dead' : safelyAlive ? `Safely ${stone.color === 'WHITE' ? 'white' : 'black'}` : undefined}
             >
               {dead && <span className="dead-stone-x" aria-hidden>×</span>}
             </div>

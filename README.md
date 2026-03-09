@@ -45,6 +45,8 @@ The web front-end lives in the `frontend/` directory.
 
 The front-end expects the backend to be running at `http://localhost:8080/api`. You can override this by setting `VITE_API_BASE_URL` in a `.env` file in `frontend/`.
 
+**Tip:** Start the backend first (`mvn spring-boot:run`), then run the frontend (`npm run dev`). The game connects to the backend on port 8080 directly, so you don't need Vite to proxy WebSockets. If you ever see a one-off `ws proxy socket error` or `EPIPE` in the Vite terminal, it's usually from the dev server's own connection and is harmless; a hard refresh (Cmd+Shift+R / Ctrl+Shift+R) can help.
+
 ## Tests
 
 - Backend tests: from the project root run `mvn test`.

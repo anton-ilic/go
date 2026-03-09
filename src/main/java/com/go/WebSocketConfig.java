@@ -18,6 +18,6 @@ public class WebSocketConfig implements WebSocketConfigurer {
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(gameWebSocketHandler, "/ws/game/*")
-                .setAllowedOrigins("*");
+                .setAllowedOriginPatterns("*"); // allow all origins (e.g. http://localhost:5173)
     }
 }
