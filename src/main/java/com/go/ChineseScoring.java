@@ -1,6 +1,7 @@
 package com.go;
 
 import java.util.ArrayDeque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Queue;
@@ -92,6 +93,32 @@ public final class ChineseScoring {
         int size;
         boolean touchesBlack;
         boolean touchesWhite;
+        /** Empty point keys "x,y" in this region (for auto-marking). */
+        Set<String> points = new HashSet<>();
+    }
+
+    /**
+     * Computes territory ownership for each empty point: flood-fill each region and assign
+     * "BLACK" or "WHITE" when the region touches only that color. Dame (touches both) is left unmarked.
+     * Used to auto-fill territory marks at the start of scoring so the board shows whose is whose.
+     */
+    public static Map<String, String> computeTerritoryMarks(Board board, Set<String> deadStones) {
+        int size = board.getBoardSize();
+        Map<String, String> out = new HashMap<>();
+        boolean[][] visited = new boolean[size][size];
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < size; y++) {
+                if (!isEmptyOrDead(board, x, y, deadStones) || visited[x][y]) continue;
+                TerritoryResult tr = floodTerritory(board, x, y, visited, deadStones);
+                String color = null;
+                if (tr.touchesBlack && !tr.touchesWhite) color = "BLACK";
+                else if (tr.touchesWhite && !tr.touchesBlack) color = "WHITE";
+                if (color != null) {
+                    for (String key : tr.points) out.put(key, color);
+                }
+            }
+        }
+        return out;
     }
 
     private static TerritoryResult floodTerritory(Board board, int startX, int startY, boolean[][] visited, Set<String> deadStones) {
@@ -102,6 +129,7 @@ public final class ChineseScoring {
         visited[startX][startY] = true;
         Set<String> seen = new HashSet<>();
         seen.add(startX + "," + startY);
+        r.points.add(startX + "," + startY);
 
         while (!q.isEmpty()) {
             int[] cell = q.poll();
@@ -117,8 +145,10 @@ public final class ChineseScoring {
                     if (stone == Board.BLACK) r.touchesBlack = true;
                     else if (stone == Board.WHITE) r.touchesWhite = true;
                 } else {
-                    if (!seen.contains(nx + "," + ny)) {
-                        seen.add(nx + "," + ny);
+                    String key = nx + "," + ny;
+                    if (!seen.contains(key)) {
+                        seen.add(key);
+                        r.points.add(key);
                         visited[nx][ny] = true;
                         q.add(new int[] { nx, ny });
                     }

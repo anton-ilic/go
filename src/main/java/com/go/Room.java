@@ -77,6 +77,9 @@ public class Room {
         this.updatedAt = Instant.now();
         if (territoryMarks != null) this.territoryMarks.putAll(territoryMarks);
         if (deadStones != null) this.deadStones.addAll(deadStones);
+        if (gameEnded && resignedBy == null && this.territoryMarks.isEmpty()) {
+            fillTerritoryMarksFromScoring();
+        }
     }
 
     public int getBoardSize() {
@@ -169,7 +172,7 @@ public class Room {
 
         if (consecutivePasses >= 2) {
             gameEnded = true;
-            recomputeScoresFromMarks();
+            fillTerritoryMarksFromScoring();
         }
 
         return new MoveResult(true, consecutivePasses >= 2 ? "Game over. Both players passed." : "Pass accepted");
@@ -229,6 +232,13 @@ public class Room {
         ChineseScoring.ScoreResult score = ChineseScoring.compute(board, komi, territoryMarks, deadStones);
         this.scoreBlack = score.black();
         this.scoreWhite = score.white();
+    }
+
+    /** At the start of scoring phase, fill territory marks so the board shows Black/White territory visually. */
+    private void fillTerritoryMarksFromScoring() {
+        territoryMarks.clear();
+        territoryMarks.putAll(ChineseScoring.computeTerritoryMarks(board, deadStones));
+        recomputeScoresFromMarks();
     }
 
     /**
