@@ -27,6 +27,7 @@ type CreateGameResponse = {
   state: {
     board: BoardState;
     solved: boolean;
+    version: number;
   };
 };
 
@@ -37,6 +38,7 @@ type MoveResponse = {
   state: {
     board: BoardState;
     solved: boolean;
+    version: number;
   } | null;
 };
 
