@@ -202,6 +202,16 @@ body {
 .board-cell.edge-left::before  { left: 50%; }
 .board-cell.edge-right::before { right: 50%; }
 
+/* Replay mode: no point highlighting (hover/focus) on intersections */
+.board.replay-mode .board-cell:hover,
+.board.replay-mode .board-cell:focus {
+  background: transparent;
+  outline: none;
+}
+.board.replay-mode .board-cell:focus-visible {
+  outline: none;
+}
+
 /* Star points (hoshi) */
 .star-point {
   position: absolute;

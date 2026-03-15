@@ -95,6 +95,7 @@ export const App: React.FC = () => {
   const [onlineBoardState, setOnlineBoardState] = useState<BoardState | null>(null);
   const [onlinePrisoners, setOnlinePrisoners] = useState<Prisoners>({ black: 0, white: 0 });
   const [onlineScoringMarks, setOnlineScoringMarks] = useState<ScoringMarks>(null);
+  const [isOnlineReplayMode, setIsOnlineReplayMode] = useState(false);
   // Use a ref for the move handler to avoid the React useState pitfall where
   // passing a function to a setter is interpreted as a functional update.
   const onlineMoveHandlerRef = useRef<((x: number, y: number) => void) | null>(null);
@@ -215,6 +216,7 @@ export const App: React.FC = () => {
     onlineMoveHandlerRef.current = null;
     setOnlineRoomId(null);
     setOnlineScoringMarks(null);
+    setIsOnlineReplayMode(false);
     window.history.replaceState({}, '', '/');
   };
 
@@ -253,6 +255,7 @@ export const App: React.FC = () => {
               onPlayMove={handleBoardMove}
               territoryMarks={isOnlineRoom ? (onlineScoringMarks?.territoryMarks) : undefined}
               deadStones={isOnlineRoom ? (onlineScoringMarks?.deadStones) : undefined}
+              replayMode={isOnlineRoom && isOnlineReplayMode}
             />
           </div>
         </div>
@@ -503,6 +506,7 @@ export const App: React.FC = () => {
               onPrisoners={setOnlinePrisoners}
               onMoveHandler={setOnlineMoveHandler}
               onScoringMarks={setOnlineScoringMarks}
+              onReplayModeChange={setIsOnlineReplayMode}
               onRoomCreated={(roomId: string) => {
                 setOnlineRoomId(roomId);
                 setMode('online-room');

@@ -8,6 +8,8 @@ type Props = {
   territoryMarks?: Record<string, string>;
   /** Keys "x,y" for stones marked as dead (scoring phase). */
   deadStones?: string[];
+  /** When true, hide territory/dead marks and point highlighting (e.g. replay mode). */
+  replayMode?: boolean;
 };
 
 /**
@@ -19,9 +21,11 @@ type Props = {
  *
  * Star points (hoshi) are shown on standard positions for 19x19 and 9x9 boards.
  */
-export const Board: React.FC<Props> = ({ board, onPlayMove, territoryMarks = {}, deadStones = [] }) => {
+export const Board: React.FC<Props> = ({ board, onPlayMove, territoryMarks = {}, deadStones = [], replayMode = false }) => {
   const size = board.boardSize;
-  const deadSet = useMemo(() => new Set(deadStones), [deadStones]);
+  const effectiveTerritoryMarks = replayMode ? {} : territoryMarks;
+  const effectiveDeadStones = replayMode ? [] : deadStones;
+  const deadSet = useMemo(() => new Set(effectiveDeadStones), [effectiveDeadStones]);
 
   const handleClick = (row: number, col: number) => {
     // Board coordinates use (x, y) with y from bottom; rows here are from top.
@@ -33,7 +37,7 @@ export const Board: React.FC<Props> = ({ board, onPlayMove, territoryMarks = {},
   const hasStoneAt = (x: number, y: number) =>
     board.stones.find(s => s.x === x && s.y === y);
 
-  const territoryAt = (x: number, y: number) => territoryMarks[`${x},${y}`];
+  const territoryAt = (x: number, y: number) => effectiveTerritoryMarks[`${x},${y}`];
   const isDeadAt = (x: number, y: number) => deadSet.has(`${x},${y}`);
 
   // Star point (hoshi) positions for common board sizes
@@ -57,8 +61,8 @@ export const Board: React.FC<Props> = ({ board, onPlayMove, territoryMarks = {},
       if (col === size - 1) classes.push('edge-right');
 
       const terr = territoryAt(x, y);
-      const dead = stone ? isDeadAt(x, y) : false;
-      const inScoring = Object.keys(territoryMarks).length > 0 || deadStones.length > 0;
+      const dead = !replayMode && stone ? isDeadAt(x, y) : false;
+      const inScoring = !replayMode && (Object.keys(effectiveTerritoryMarks).length > 0 || effectiveDeadStones.length > 0);
       const safelyAlive = stone && !dead && inScoring;
 
       cells.push(
@@ -95,7 +99,11 @@ export const Board: React.FC<Props> = ({ board, onPlayMove, territoryMarks = {},
     );
   }
 
-  return <div className={`board board-size-${size}`}>{rows}</div>;
+  return (
+    <div className={`board board-size-${size}${replayMode ? ' replay-mode' : ''}`}>
+      {rows}
+    </div>
+  );
 };
 
 /** Returns star point positions as [col, row] pairs (visual coordinates, 0-indexed from top-left). */

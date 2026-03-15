@@ -68,9 +68,10 @@ type Props = {
   onMoveHandler: (handler: ((x: number, y: number) => void) | null) => void;
   onRoomCreated?: (roomId: string) => void;  // Callback when room is created
   onScoringMarks?: (marks: ScoringMarks) => void;  // Territory/dead marks for board display (scoring phase)
+  onReplayModeChange?: (isReplay: boolean) => void;  // Called when entering/leaving replay (for Board replayMode)
 };
 
-export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoardState, onPrisoners, onMoveHandler, onRoomCreated, onScoringMarks }) => {
+export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoardState, onPrisoners, onMoveHandler, onRoomCreated, onScoringMarks, onReplayModeChange }) => {
   const [phase, setPhase] = useState<'creating' | 'joining' | 'connected' | 'error'>(
     initialRoomId ? 'joining' : 'creating'
   );
@@ -693,6 +694,10 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     setReplayIndex(clamped);
     onBoardState(replayMoves[clamped].board);
   }, [replayMoves, onBoardState]);
+
+  useEffect(() => {
+    onReplayModeChange?.(replayIndex !== null);
+  }, [replayIndex, onReplayModeChange]);
 
   // --- Render ---
   return (
