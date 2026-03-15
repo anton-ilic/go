@@ -14,8 +14,10 @@ public class WebConfig {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/api/**")
-                        .allowedOrigins("http://localhost:5173", "http://localhost:3000")
+                        // Allow all origins for the API during development to avoid CORS issues
+                        .allowedOriginPatterns("*")
                         .allowedMethods("GET", "POST", "OPTIONS")
+                        .allowedHeaders("*")
                         .allowCredentials(false);
             }
         };

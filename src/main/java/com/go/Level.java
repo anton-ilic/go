@@ -104,6 +104,14 @@ public class Level {
         return current >= steps.size();
     }
 
+    /**
+     * Returns the current solution step index. This can be used as a lightweight
+     * version / move index for clients to detect when the game state has changed.
+     */
+    public int getCurrentStepIndex() {
+        return current;
+    }
+
     public int getStoneAt(int x, int y){
         return board.getStoneAt(x, y);
     }
