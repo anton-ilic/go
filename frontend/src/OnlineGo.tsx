@@ -660,6 +660,17 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
       {roomId && phase !== 'error' && (
         <div className="game-info-sidebar">
           <div className="game-info-card">
+            <div className="game-essentials-header">
+              <div className="game-essentials-title">Game Essentials</div>
+              <div className="game-essentials-subtitle">
+                {roomState?.gameEnded
+                  ? 'Final position & scoring'
+                  : roomState
+                    ? `Live game · Move ${roomState.moveNumber + 1}`
+                    : 'Waiting for connection'}
+              </div>
+            </div>
+
             {/* Back button */}
             <button className="back-button" onClick={handleLeave}>
               ← Back
