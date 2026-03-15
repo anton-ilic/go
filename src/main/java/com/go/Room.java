@@ -234,9 +234,18 @@ public class Room {
         int size = board.getBoardSize();
         if (x < 0 || x >= size || y < 0 || y >= size) return false;
         if (board.getStoneAt(x, y) == Board.EMPTY) return false;
-        String key = x + "," + y;
-        if (deadStones.contains(key)) deadStones.remove(key);
-        else deadStones.add(key);
+        // Toggle the entire connected group of stones (same color) as dead/alive.
+        java.util.Set<String> group = floodFillStoneGroup(x, y);
+        boolean anyDead = group.stream().anyMatch(deadStones::contains);
+        if (anyDead) {
+            // If any stone in the group is already marked dead, unmark the whole group.
+            for (String key : group) {
+                deadStones.remove(key);
+            }
+        } else {
+            // Otherwise mark the whole group as dead.
+            deadStones.addAll(group);
+        }
         recomputeScoresFromMarks();
         updatedAt = Instant.now();
         return true;
@@ -279,6 +288,48 @@ public class Room {
                 int ny = y + d[1];
                 if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
                 if (board.getStoneAt(nx, ny) != Board.EMPTY) continue;
+                String key = nx + "," + ny;
+                if (visited.contains(key)) continue;
+                visited.add(key);
+                queue.add(new int[]{nx, ny});
+            }
+        }
+
+        return visited;
+    }
+
+    /**
+     * Flood-fill a connected group of stones of the same color starting from (startX, startY).
+     * Returns a set of "x,y" keys for all stones in the group.
+     */
+    private java.util.Set<String> floodFillStoneGroup(int startX, int startY) {
+        java.util.Set<String> visited = new java.util.HashSet<>();
+        java.util.ArrayDeque<int[]> queue = new java.util.ArrayDeque<>();
+
+        int size = board.getBoardSize();
+        if (startX < 0 || startX >= size || startY < 0 || startY >= size) {
+            return visited;
+        }
+        int color = board.getStoneAt(startX, startY);
+        if (color == Board.EMPTY) {
+            return visited;
+        }
+
+        queue.add(new int[]{startX, startY});
+        visited.add(startX + "," + startY);
+
+        int[][] directions = new int[][]{{1,0},{-1,0},{0,1},{0,-1}};
+
+        while (!queue.isEmpty()) {
+            int[] pos = queue.pollFirst();
+            int x = pos[0];
+            int y = pos[1];
+
+            for (int[] d : directions) {
+                int nx = x + d[0];
+                int ny = y + d[1];
+                if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
+                if (board.getStoneAt(nx, ny) != color) continue;
                 String key = nx + "," + ny;
                 if (visited.contains(key)) continue;
                 visited.add(key);
