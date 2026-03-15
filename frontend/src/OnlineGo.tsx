@@ -72,8 +72,6 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
   const [roomState, setRoomState] = useState<RoomState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  /** When in scoring phase: 'territory' = mark empty as B/W territory, 'dead' = mark stone as dead. */
-  const [markMode, setMarkMode] = useState<'territory' | 'dead' | null>(null);
   const [showRulebook, setShowRulebook] = useState(false);
   const [rulebookPage, setRulebookPage] = useState(0);
   const [rulebookFlip, setRulebookFlip] = useState<'none' | 'out' | 'in'>('none');
@@ -432,14 +430,14 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
 
   // Update parent's move handler: scoring phase -> mark clicks; playing -> play moves; else null
   const handleMarkClick = useCallback(async (x: number, y: number) => {
-    if (!roomState?.roomId || !roomState.isScoringPhase || !markMode) return;
+    if (!roomState?.roomId || !roomState.isScoringPhase) return;
     const size = roomState.board?.boardSize ?? 0;
     if (x < 0 || x >= size || y < 0 || y >= size) return;
     const key = `${x},${y}`;
     const hasStone = roomState.board?.stones?.some(s => s.x === x && s.y === y);
 
-    if (markMode === 'territory') {
-      if (hasStone) return;
+    // Click on empty point => territory mark (flood-filled region on backend)
+    if (!hasStone) {
       const current = roomState.territoryMarks?.[key];
       const next = !current ? 'BLACK' : current === 'BLACK' ? 'WHITE' : null;
       try {
@@ -454,7 +452,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
           onBoardState(data.board);
           onPrisoners(toPrisoners(data.prisoners));
         }
-        if (res.ok) setStatusMessage(next ? `Marked as ${next}` : 'Territory mark cleared');
+        if (res.ok) setStatusMessage(next ? `Marked territory as ${next}` : 'Territory mark cleared');
         else setStatusMessage(data.message || 'Failed');
         setTimeout(() => setStatusMessage(null), 2000);
       } catch (e) {
@@ -463,39 +461,38 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
       }
       return;
     }
-    if (markMode === 'dead') {
-      if (!hasStone) return;
-      try {
-        const res = await fetch(`${API_BASE_URL}/rooms/${roomState.roomId}/marks/dead`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ x, y }),
-        });
-        const data = await res.json();
-        if (data.roomId && data.board) {
-          setRoomState(toRoomState(data, roomState));
-          onBoardState(data.board);
-          onPrisoners(toPrisoners(data.prisoners));
-        }
-        if (res.ok) setStatusMessage('Dead stone toggled');
-        else setStatusMessage(data.message || 'Failed');
-        setTimeout(() => setStatusMessage(null), 2000);
-      } catch (e) {
-        setStatusMessage('Request failed');
-        setTimeout(() => setStatusMessage(null), 2000);
+
+    // Click on stone => toggle dead/alive
+    try {
+      const res = await fetch(`${API_BASE_URL}/rooms/${roomState.roomId}/marks/dead`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x, y }),
+      });
+      const data = await res.json();
+      if (data.roomId && data.board) {
+        setRoomState(toRoomState(data, roomState));
+        onBoardState(data.board);
+        onPrisoners(toPrisoners(data.prisoners));
       }
+      if (res.ok) setStatusMessage('Dead stone toggled');
+      else setStatusMessage(data.message || 'Failed');
+      setTimeout(() => setStatusMessage(null), 2000);
+    } catch (e) {
+      setStatusMessage('Request failed');
+      setTimeout(() => setStatusMessage(null), 2000);
     }
-  }, [roomState, markMode, toRoomState, toPrisoners, onBoardState, onPrisoners]);
+  }, [roomState, toRoomState, toPrisoners, onBoardState, onPrisoners]);
 
   useEffect(() => {
     if (roomState?.isScoringPhase) {
-      onMoveHandler(markMode ? handleMarkClick : null);
+      onMoveHandler(handleMarkClick);
     } else if (roomState && !roomState.gameEnded) {
       onMoveHandler(handlePlayMove);
     } else {
       onMoveHandler(null);
     }
-  }, [roomState, roomState?.isScoringPhase, roomState?.gameEnded, markMode, handleMarkClick, handlePlayMove, onMoveHandler]);
+  }, [roomState, roomState?.isScoringPhase, roomState?.gameEnded, handleMarkClick, handlePlayMove, onMoveHandler]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -790,31 +787,15 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
               </div>
             )}
 
-            {/* Scoring phase: mark territory or dead stones (contest) */}
+            {/* Scoring phase: single marking mode.
+                - Click empty intersections to cycle territory (empty → Black → White → empty), region-filled.
+                - Click stones to toggle them dead/alive. */}
             {roomState?.isScoringPhase && (
               <div className="scoring-marks-section">
                 <div className="scoring-marks-label">Mark for scoring</div>
-                <div className="scoring-marks-buttons">
-                  <button
-                    type="button"
-                    className={`btn-mark-mode ${markMode === 'territory' ? 'active' : ''}`}
-                    onClick={() => setMarkMode(m => m === 'territory' ? null : 'territory')}
-                  >
-                    Mark territory
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn-mark-mode ${markMode === 'dead' ? 'active' : ''}`}
-                    onClick={() => setMarkMode(m => m === 'dead' ? null : 'dead')}
-                  >
-                    Mark dead / Contest
-                  </button>
+                <div className="scoring-marks-hint">
+                  Click empty points to mark Black/White territory (whole region), or stones to toggle dead/alive.
                 </div>
-                {markMode && (
-                  <div className="scoring-marks-hint">
-                    {markMode === 'territory' ? 'Click empty points to assign to Black or White (cycle).' : 'Click stones to mark as dead for scoring.'}
-                  </div>
-                )}
               </div>
             )}
 
