@@ -71,6 +71,41 @@ public class RoomController {
     }
 
     /**
+     * GET /api/rooms/{roomId}/history — Get linear board history for replay.
+     * Returns initial position plus one entry after each move/pass.
+     */
+    @GetMapping("/{roomId}/history")
+    public ResponseEntity<?> getRoomHistory(@PathVariable("roomId") String roomId) {
+        Room room = roomService.getRoom(roomId);
+        if (room == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "Room not found"));
+        }
+
+        java.util.List<Map<String, Object>> moves = new java.util.ArrayList<>();
+        int size = room.getBoard().getBoardSize();
+        java.util.List<com.go.BoardStateSnapshot> history = room.getHistory();
+
+        for (int i = 0; i < history.size(); i++) {
+            com.go.BoardStateSnapshot snapshot = history.get(i);
+            Board tempBoard = new Board(size);
+            tempBoard.restoreState(snapshot);
+            BoardStateDto boardDto = toBoardDto(tempBoard);
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("index", i);
+            entry.put("moveNumber", i); // simple index for now
+            entry.put("board", boardDto);
+            moves.add(entry);
+        }
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("roomId", room.getRoomId());
+        body.put("moves", moves);
+        body.put("finalIndex", moves.isEmpty() ? -1 : moves.size() - 1);
+        return ResponseEntity.ok(body);
+    }
+
+    /**
      * POST /api/rooms/{roomId}/moves — Make a move.
      * Body: { "x": int, "y": int }
      */
@@ -256,11 +291,15 @@ public class RoomController {
     }
 
     private BoardStateDto toBoardDto(Room room) {
-        int size = room.getBoard().getBoardSize();
+        return toBoardDto(room.getBoard());
+    }
+
+    private BoardStateDto toBoardDto(Board board) {
+        int size = board.getBoardSize();
         List<BoardStateDto.StoneDto> stones = new ArrayList<>();
         for (int x = 0; x < size; x++) {
             for (int y = 0; y < size; y++) {
-                int stone = room.getBoard().getStoneAt(x, y);
+                int stone = board.getStoneAt(x, y);
                 if (stone == Board.WHITE) {
                     stones.add(new BoardStateDto.StoneDto(x, y, "WHITE"));
                 } else if (stone == Board.BLACK) {

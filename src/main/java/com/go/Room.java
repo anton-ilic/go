@@ -29,6 +29,8 @@ public class Room {
     private final Map<String, String> territoryMarks = new ConcurrentHashMap<>();
     /** Stones marked as dead for scoring: keys "x,y". Only used when game ended by double-pass. */
     private final Set<String> deadStones = ConcurrentHashMap.newKeySet();
+    /** Linear history of board states for replay (initial position + after each move/pass). */
+    private final java.util.List<BoardStateSnapshot> history = new java.util.ArrayList<>();
 
     public Room(String roomId) {
         this(roomId, Board.DEFAULT_BOARD_SIZE, 6.5);
@@ -52,6 +54,8 @@ public class Room {
         this.scoreBlack = 0;
         this.scoreWhite = 0;
         this.updatedAt = Instant.now();
+        // Record initial position for replay
+        this.history.add(this.board.createStateSnapshot());
     }
 
     /**
@@ -129,6 +133,11 @@ public class Room {
     /** True if game ended by double-pass (so territory/dead marking is allowed). */
     public boolean isScoringPhase() { return gameEnded && resignedBy == null; }
 
+    /** Immutable view of the replay history (initial position + after each move/pass). */
+    public java.util.List<BoardStateSnapshot> getHistory() {
+        return java.util.List.copyOf(history);
+    }
+
     /**
      * Attempts to apply a move. Thread-safe.
      * Saves current state to undo stack before moving; clears redo stack on success.
@@ -155,6 +164,9 @@ public class Room {
         this.moveNumber++;
         this.updatedAt = Instant.now();
 
+        // Record the new position for replay (after the move).
+        history.add(board.createStateSnapshot());
+
         return new MoveResult(true, "Move accepted", saved);
     }
 
@@ -174,6 +186,9 @@ public class Room {
             gameEnded = true;
             fillTerritoryMarksFromScoring();
         }
+
+        // Record the position after the pass for replay as well.
+        history.add(board.createStateSnapshot());
 
         return new MoveResult(true, consecutivePasses >= 2 ? "Game over. Both players passed." : "Pass accepted");
     }

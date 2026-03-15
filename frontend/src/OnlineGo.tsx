@@ -54,6 +54,12 @@ export type RoomState = {
 
 export type ScoringMarks = { territoryMarks: Record<string, string>; deadStones: string[] } | null;
 
+type ReplayMove = {
+  index: number;
+  moveNumber: number;
+  board: BoardState;
+};
+
 type Props = {
   roomId: string | null;          // null = "create room" flow, string = "join existing room"
   onBack: () => void;
@@ -76,6 +82,9 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
   const [rulebookPage, setRulebookPage] = useState(0);
   const [rulebookFlip, setRulebookFlip] = useState<'none' | 'out' | 'in'>('none');
   const [rulebookDirection, setRulebookDirection] = useState<'next' | 'prev'>('next');
+
+  const [replayMoves, setReplayMoves] = useState<ReplayMove[] | null>(null);
+  const [replayIndex, setReplayIndex] = useState<number | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
@@ -636,6 +645,55 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     onBack();
   };
 
+  const loadReplayIfNeeded = useCallback(async () => {
+    if (!roomState?.roomId) return;
+
+    // If we already have moves loaded, just restart replay from the beginning.
+    if (replayMoves && replayMoves.length > 0) {
+      setReplayIndex(0);
+      onBoardState(replayMoves[0].board);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/rooms/${roomState.roomId}/history`);
+      if (!res.ok) {
+        console.error('Failed to load replay history', res.status);
+        setStatusMessage('Could not load replay.');
+        setTimeout(() => setStatusMessage(null), 2000);
+        return;
+      }
+      const data = await res.json();
+      const movesData = Array.isArray(data.moves) ? (data.moves as any[]) : [];
+      const parsed: ReplayMove[] = movesData
+        .filter(m => m && m.board)
+        .map(m => ({
+          index: Number(m.index ?? 0),
+          moveNumber: Number(m.moveNumber ?? 0),
+          board: m.board as BoardState,
+        }));
+      setReplayMoves(parsed);
+      if (parsed.length > 0) {
+        setReplayIndex(0);
+        onBoardState(parsed[0].board);
+      } else {
+        setStatusMessage('No moves to replay yet.');
+        setTimeout(() => setStatusMessage(null), 2000);
+      }
+    } catch (e) {
+      console.error('Error loading replay history', e);
+      setStatusMessage('Could not load replay.');
+      setTimeout(() => setStatusMessage(null), 2000);
+    }
+  }, [roomState?.roomId, replayMoves, onBoardState]);
+
+  const goToReplayIndex = useCallback((nextIndex: number) => {
+    if (!replayMoves || replayMoves.length === 0) return;
+    const clamped = Math.max(0, Math.min(nextIndex, replayMoves.length - 1));
+    setReplayIndex(clamped);
+    onBoardState(replayMoves[clamped].board);
+  }, [replayMoves, onBoardState]);
+
   // --- Render ---
   return (
     <div className="online-go-container">
@@ -719,6 +777,89 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
                     </div>
                   </>
                 )}
+
+                {/* Replay controls */}
+                <div className="replay-controls">
+                  <div className="replay-controls-header">Replay moves</div>
+                  <div className="replay-buttons-row">
+                    {replayIndex === null ? (
+                      <button
+                        type="button"
+                        className="btn-replay"
+                        onClick={loadReplayIfNeeded}
+                      >
+                        Start replay
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="btn-replay"
+                          onClick={() => goToReplayIndex(0)}
+                          disabled={!replayMoves || replayMoves.length === 0 || replayIndex === 0}
+                          title="First position"
+                        >
+                          |◀
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-replay"
+                          onClick={() => goToReplayIndex((replayIndex ?? 0) - 1)}
+                          disabled={!replayMoves || replayMoves.length === 0 || replayIndex === 0}
+                          title="Previous move"
+                        >
+                          ◀
+                        </button>
+                        <span className="replay-index">
+                          {replayMoves && replayMoves.length > 0
+                            ? `Move ${replayIndex!} / ${replayMoves.length - 1}`
+                            : 'No moves'}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn-replay"
+                          onClick={() => goToReplayIndex((replayIndex ?? 0) + 1)}
+                          disabled={
+                            !replayMoves ||
+                            replayMoves.length === 0 ||
+                            replayIndex === null ||
+                            replayIndex >= replayMoves.length - 1
+                          }
+                          title="Next move"
+                        >
+                          ▶
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-replay"
+                          onClick={() => goToReplayIndex(replayMoves ? replayMoves.length - 1 : 0)}
+                          disabled={
+                            !replayMoves ||
+                            replayMoves.length === 0 ||
+                            replayIndex === null ||
+                            replayIndex >= replayMoves.length - 1
+                          }
+                          title="Last position"
+                        >
+                          ▶|
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-replay-secondary"
+                          onClick={() => {
+                            setReplayIndex(null);
+                            if (replayMoves && replayMoves.length > 0) {
+                              // restore final board position from roomState
+                              onBoardState(roomState.board);
+                            }
+                          }}
+                        >
+                          Exit replay
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 

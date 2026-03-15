@@ -934,6 +934,57 @@ body {
   color: #8f8;
 }
 
+/* Replay controls */
+.replay-controls {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #444;
+}
+
+.replay-controls-header {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #999;
+  margin-bottom: 0.4rem;
+}
+
+.replay-buttons-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.btn-replay,
+.btn-replay-secondary {
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid #555;
+  background: #1e1e1e;
+  color: #ddd;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-replay:hover:not(:disabled),
+.btn-replay-secondary:hover:not(:disabled) {
+  background: #333;
+  border-color: #777;
+}
+
+.btn-replay-secondary {
+  margin-left: auto;
+  opacity: 0.9;
+}
+
+.replay-index {
+  font-size: 0.8rem;
+  color: #bbb;
+  padding: 0 0.4rem;
+}
+
 /* Scoring phase: mark territory / dead */
 .scoring-marks-section {
   border-top: 1px solid #444;
