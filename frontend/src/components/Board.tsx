@@ -10,6 +10,8 @@ type Props = {
   deadStones?: string[];
   /** When true, hide territory/dead marks and point highlighting (e.g. replay mode). */
   replayMode?: boolean;
+  /** Coordinates of the last stone played (green outline). */
+  lastMove?: { x: number; y: number } | null;
 };
 
 /**
@@ -21,7 +23,7 @@ type Props = {
  *
  * Star points (hoshi) are shown on standard positions for 19x19 and 9x9 boards.
  */
-export const Board: React.FC<Props> = ({ board, onPlayMove, territoryMarks = {}, deadStones = [], replayMode = false }) => {
+export const Board: React.FC<Props> = ({ board, onPlayMove, territoryMarks = {}, deadStones = [], replayMode = false, lastMove = null }) => {
   const size = board.boardSize;
   const effectiveTerritoryMarks = replayMode ? {} : territoryMarks;
   const effectiveDeadStones = replayMode ? [] : deadStones;
@@ -64,6 +66,7 @@ export const Board: React.FC<Props> = ({ board, onPlayMove, territoryMarks = {},
       const dead = !replayMode && stone ? isDeadAt(x, y) : false;
       const inScoring = !replayMode && (Object.keys(effectiveTerritoryMarks).length > 0 || effectiveDeadStones.length > 0);
       const safelyAlive = stone && !dead && inScoring;
+      const isLastMove = lastMove != null && lastMove.x === x && lastMove.y === y;
 
       cells.push(
         <div
@@ -82,7 +85,7 @@ export const Board: React.FC<Props> = ({ board, onPlayMove, territoryMarks = {},
           )}
           {stone && (
             <div
-              className={`stone ${stone.color === 'WHITE' ? 'white' : 'black'}${dead ? ' dead-stone' : ''}${safelyAlive ? ` safely-${stone.color === 'WHITE' ? 'white' : 'black'}` : ''}`}
+              className={`stone ${stone.color === 'WHITE' ? 'white' : 'black'}${dead ? ' dead-stone' : ''}${safelyAlive ? ` safely-${stone.color === 'WHITE' ? 'white' : 'black'}` : ''}${isLastMove ? ' last-move' : ''}`}
               role="img"
               title={dead ? 'Marked dead' : safelyAlive ? `Safely ${stone.color === 'WHITE' ? 'white' : 'black'}` : undefined}
             >

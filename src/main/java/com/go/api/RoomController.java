@@ -67,6 +67,7 @@ public class RoomController {
         body.put("board", toBoardDto(room));
         body.put("canUndo", room.canUndo());
         body.put("canRedo", room.canRedo());
+        body.put("lastMove", room.getLastMoveX() >= 0 ? Map.of("x", room.getLastMoveX(), "y", room.getLastMoveY()) : null);
         return ResponseEntity.ok(body);
     }
 
@@ -93,8 +94,14 @@ public class RoomController {
             BoardStateDto boardDto = toBoardDto(tempBoard);
             Map<String, Object> entry = new HashMap<>();
             entry.put("index", i);
-            entry.put("moveNumber", i); // simple index for now
+            entry.put("moveNumber", i);
             entry.put("board", boardDto);
+            if (i > 0) {
+                int[] lastMove = lastMoveBetween(room.getBoardSize(), history.get(i - 1), snapshot);
+                if (lastMove != null) {
+                    entry.put("lastMove", Map.of("x", lastMove[0], "y", lastMove[1]));
+                }
+            }
             moves.add(entry);
         }
 
@@ -337,6 +344,23 @@ public class RoomController {
         m.put("board", toBoardDto(room));
         m.put("canUndo", room.canUndo());
         m.put("canRedo", room.canRedo());
+        m.put("lastMove", room.getLastMoveX() >= 0 ? Map.of("x", room.getLastMoveX(), "y", room.getLastMoveY()) : null);
         return m;
+    }
+
+    /** Returns [x, y] of the stone added from prev to current, or null if none (e.g. pass). */
+    private static int[] lastMoveBetween(int size, com.go.BoardStateSnapshot prev, com.go.BoardStateSnapshot current) {
+        Board bPrev = new Board(size);
+        bPrev.restoreState(prev);
+        Board bCur = new Board(size);
+        bCur.restoreState(current);
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < size; y++) {
+                if (bCur.getStoneAt(x, y) != Board.EMPTY && bPrev.getStoneAt(x, y) == Board.EMPTY) {
+                    return new int[]{x, y};
+                }
+            }
+        }
+        return null;
     }
 }

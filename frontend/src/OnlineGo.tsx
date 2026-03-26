@@ -50,6 +50,7 @@ export type RoomState = {
   territoryMarks?: Record<string, string>;
   deadStones?: string[];
   isScoringPhase?: boolean;
+  lastMove?: { x: number; y: number } | null;
 };
 
 export type ScoringMarks = { territoryMarks: Record<string, string>; deadStones: string[] } | null;
@@ -58,6 +59,7 @@ type ReplayMove = {
   index: number;
   moveNumber: number;
   board: BoardState;
+  lastMove?: { x: number; y: number } | null;
 };
 
 type Props = {
@@ -69,9 +71,10 @@ type Props = {
   onRoomCreated?: (roomId: string) => void;  // Callback when room is created
   onScoringMarks?: (marks: ScoringMarks) => void;  // Territory/dead marks for board display (scoring phase)
   onReplayModeChange?: (isReplay: boolean) => void;  // Called when entering/leaving replay (for Board replayMode)
+  onLastMove?: (lastMove: { x: number; y: number } | null) => void;  // Last stone played (for green outline)
 };
 
-export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoardState, onPrisoners, onMoveHandler, onRoomCreated, onScoringMarks, onReplayModeChange }) => {
+export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoardState, onPrisoners, onMoveHandler, onRoomCreated, onScoringMarks, onReplayModeChange, onLastMove }) => {
   const [phase, setPhase] = useState<'creating' | 'joining' | 'connected' | 'error'>(
     initialRoomId ? 'joining' : 'creating'
   );
@@ -120,6 +123,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     territoryMarks: data.territoryMarks ?? fallback?.territoryMarks ?? {},
     deadStones: Array.isArray(data.deadStones) ? data.deadStones : (fallback?.deadStones ?? []),
     isScoringPhase: data.isScoringPhase ?? fallback?.isScoringPhase ?? false,
+    lastMove: data.lastMove != null ? data.lastMove : (fallback?.lastMove ?? null),
   }), [toPrisoners]);
 
   // --- Create room ---
@@ -176,6 +180,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
           setRoomState(state);
           onBoardState(state.board);
           onPrisoners(state.prisoners);
+          onLastMove?.(state.lastMove ?? null);
         } else {
           const data = await res.json().catch(() => ({}));
           const message = (data && typeof data.error === 'string') ? data.error : 'Room not found';
@@ -215,6 +220,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
               const newState: RoomState = toRoomState(data);
               onBoardState(newState.board);
               onPrisoners(newState.prisoners);
+              onLastMove?.(newState.lastMove ?? null);
               return newState;
             }
             // Only update if moveNumber changed (opponent made a move)
@@ -223,6 +229,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
               console.log('Polled state update:', newState, 'old:', currentState.moveNumber);
               onBoardState(newState.board);
               onPrisoners(newState.prisoners);
+              onLastMove?.(newState.lastMove ?? null);
               return newState;
             }
             return currentState;
@@ -269,6 +276,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
           setRoomState(state);
           onBoardState(state.board);
           onPrisoners(state.prisoners);
+          onLastMove?.(state.lastMove ?? null);
         } else if (data.type === 'error') {
           setStatusMessage(data.message);
           // Error messages also include state — update if present
@@ -277,6 +285,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
             setRoomState(state);
             onBoardState(state.board);
             onPrisoners(state.prisoners);
+            onLastMove?.(state.lastMove ?? null);
           }
           setTimeout(() => setStatusMessage(null), 3000);
         }
@@ -397,6 +406,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
         setRoomState(newState);
         onBoardState(newState.board);
         onPrisoners(newState.prisoners);
+        onLastMove?.(newState.lastMove ?? null);
       }
       
       if (res.ok && data.success) {
@@ -458,9 +468,11 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
         });
         const data = await res.json();
         if (data.roomId && data.board) {
-          setRoomState(toRoomState(data, roomState));
+          const newState = toRoomState(data, roomState);
+          setRoomState(newState);
           onBoardState(data.board);
           onPrisoners(toPrisoners(data.prisoners));
+          onLastMove?.(newState.lastMove ?? null);
         }
         if (res.ok) setStatusMessage(next ? `Marked territory as ${next}` : 'Territory mark cleared');
         else setStatusMessage(data.message || 'Failed');
@@ -481,9 +493,11 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
       });
       const data = await res.json();
       if (data.roomId && data.board) {
-        setRoomState(toRoomState(data, roomState));
+        const newState = toRoomState(data, roomState);
+        setRoomState(newState);
         onBoardState(data.board);
         onPrisoners(toPrisoners(data.prisoners));
+        onLastMove?.(newState.lastMove ?? null);
       }
       if (res.ok) setStatusMessage('Dead stone toggled');
       else setStatusMessage(data.message || 'Failed');
@@ -530,6 +544,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
         setRoomState(newState);
         onBoardState(newState.board);
         onPrisoners(newState.prisoners);
+        onLastMove?.(newState.lastMove ?? null);
         setStatusMessage(data.message ?? `${newState.resignedBy} resigned. ${newState.winner} wins.`);
       } else {
         setStatusMessage(data.message ?? 'Resign failed');
@@ -566,6 +581,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
         setRoomState(newState);
         onBoardState(newState.board);
         onPrisoners(newState.prisoners);
+        onLastMove?.(newState.lastMove ?? null);
         setStatusMessage(newState.gameEnded ? 'Game over.' : 'Turn passed.');
         setTimeout(() => setStatusMessage(null), 2000);
       } else {
@@ -589,6 +605,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
         setRoomState(newState);
         onBoardState(newState.board);
         onPrisoners(newState.prisoners);
+        onLastMove?.(newState.lastMove ?? null);
         setStatusMessage(data.message ?? 'Move undone.');
       } else {
         setStatusMessage(data.message ?? 'Nothing to undo.');
@@ -611,6 +628,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
         setRoomState(newState);
         onBoardState(newState.board);
         onPrisoners(newState.prisoners);
+        onLastMove?.(newState.lastMove ?? null);
         setStatusMessage(data.message ?? 'Move redone.');
       } else {
         setStatusMessage(data.message ?? 'Nothing to redo.');
@@ -640,6 +658,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     }
     onBoardState(null);
     onPrisoners({ black: 0, white: 0 });
+    onLastMove?.(null);
     onMoveHandler(null);
     // Reset URL
     window.history.replaceState({}, '', '/');
@@ -653,6 +672,7 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
     if (replayMoves && replayMoves.length > 0) {
       setReplayIndex(0);
       onBoardState(replayMoves[0].board);
+      onLastMove?.(replayMoves[0].lastMove ?? null);
       return;
     }
 
@@ -672,11 +692,13 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
           index: Number(m.index ?? 0),
           moveNumber: Number(m.moveNumber ?? 0),
           board: m.board as BoardState,
+          lastMove: m.lastMove != null ? m.lastMove : null,
         }));
       setReplayMoves(parsed);
       if (parsed.length > 0) {
         setReplayIndex(0);
         onBoardState(parsed[0].board);
+        onLastMove?.(parsed[0].lastMove ?? null);
       } else {
         setStatusMessage('No moves to replay yet.');
         setTimeout(() => setStatusMessage(null), 2000);
@@ -686,14 +708,15 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
       setStatusMessage('Could not load replay.');
       setTimeout(() => setStatusMessage(null), 2000);
     }
-  }, [roomState?.roomId, replayMoves, onBoardState]);
+  }, [roomState?.roomId, replayMoves, onBoardState, onLastMove]);
 
   const goToReplayIndex = useCallback((nextIndex: number) => {
     if (!replayMoves || replayMoves.length === 0) return;
     const clamped = Math.max(0, Math.min(nextIndex, replayMoves.length - 1));
     setReplayIndex(clamped);
     onBoardState(replayMoves[clamped].board);
-  }, [replayMoves, onBoardState]);
+    onLastMove?.(replayMoves[clamped].lastMove ?? null);
+  }, [replayMoves, onBoardState, onLastMove]);
 
   useEffect(() => {
     onReplayModeChange?.(replayIndex !== null);
@@ -853,9 +876,9 @@ export const OnlineGo: React.FC<Props> = ({ roomId: initialRoomId, onBack, onBoa
                           className="btn-replay-secondary"
                           onClick={() => {
                             setReplayIndex(null);
-                            if (replayMoves && replayMoves.length > 0) {
-                              // restore final board position from roomState
+                            if (replayMoves && replayMoves.length > 0 && roomState) {
                               onBoardState(roomState.board);
+                              onLastMove?.(roomState.lastMove ?? null);
                             }
                           }}
                         >

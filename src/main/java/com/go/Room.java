@@ -31,6 +31,9 @@ public class Room {
     private final Set<String> deadStones = ConcurrentHashMap.newKeySet();
     /** Linear history of board states for replay (initial position + after each move/pass). */
     private final java.util.List<BoardStateSnapshot> history = new java.util.ArrayList<>();
+    /** Coordinates of the last stone played (-1,-1 if none or after a pass). */
+    private int lastMoveX = -1;
+    private int lastMoveY = -1;
 
     public Room(String roomId) {
         this(roomId, Board.DEFAULT_BOARD_SIZE, 6.5);
@@ -133,6 +136,11 @@ public class Room {
     /** True if game ended by double-pass (so territory/dead marking is allowed). */
     public boolean isScoringPhase() { return gameEnded && resignedBy == null; }
 
+    /** Last stone played: x (or -1 if none/pass). */
+    public int getLastMoveX() { return lastMoveX; }
+    /** Last stone played: y (or -1 if none/pass). */
+    public int getLastMoveY() { return lastMoveY; }
+
     /** Immutable view of the replay history (initial position + after each move/pass). */
     public java.util.List<BoardStateSnapshot> getHistory() {
         return java.util.List.copyOf(history);
@@ -162,6 +170,8 @@ public class Room {
         board.clearRedo();
         this.turn = isWhite ? "BLACK" : "WHITE";
         this.moveNumber++;
+        this.lastMoveX = x;
+        this.lastMoveY = y;
         this.updatedAt = Instant.now();
 
         // Record the new position for replay (after the move).
@@ -180,6 +190,8 @@ public class Room {
         this.turn = "WHITE".equals(this.turn) ? "BLACK" : "WHITE";
         this.moveNumber++;
         this.consecutivePasses++;
+        this.lastMoveX = -1;
+        this.lastMoveY = -1;
         this.updatedAt = Instant.now();
 
         if (consecutivePasses >= 2) {
@@ -370,6 +382,8 @@ public class Room {
         board.undo();
         moveNumber--;
         this.turn = "WHITE".equals(this.turn) ? "BLACK" : "WHITE";
+        this.lastMoveX = -1;
+        this.lastMoveY = -1;
         this.updatedAt = Instant.now();
         return true;
     }
@@ -382,6 +396,8 @@ public class Room {
         board.redo();
         moveNumber++;
         this.turn = "WHITE".equals(this.turn) ? "BLACK" : "WHITE";
+        this.lastMoveX = -1;
+        this.lastMoveY = -1;
         this.updatedAt = Instant.now();
         return true;
     }

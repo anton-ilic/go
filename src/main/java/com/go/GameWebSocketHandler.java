@@ -196,6 +196,12 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         obj.addProperty("isScoringPhase", room.isScoringPhase());
         obj.addProperty("canUndo", room.canUndo());
         obj.addProperty("canRedo", room.canRedo());
+        if (room.getLastMoveX() >= 0) {
+            JsonObject lastMoveObj = new JsonObject();
+            lastMoveObj.addProperty("x", room.getLastMoveX());
+            lastMoveObj.addProperty("y", room.getLastMoveY());
+            obj.add("lastMove", lastMoveObj);
+        }
         JsonObject prisonersObj = new JsonObject();
         prisonersObj.addProperty("black", room.getBlackPrisoners());
         prisonersObj.addProperty("white", room.getWhitePrisoners());
